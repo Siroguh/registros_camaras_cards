@@ -29,6 +29,14 @@ su inclusión en el catálogo de HACS. La CI HACS solo valida el formato técnic
 
 ## Tarjetas
 
+### Apariencia clara y oscura
+
+Las tres tarjetas siguen automáticamente el tema de Home Assistant, incluido el modo
+claro u oscuro elegido en tu perfil. Fondos, textos, campos, botones, diálogos y editores
+visuales usan los colores del tema activo. Los controles nativos de fecha y selección
+también siguen el modo de HA. No necesitas configurar cada tarjeta ni escribir YAML.
+Cambiar de tema conserva los valores que estés introduciendo en los formularios.
+
 ### Cámara
 
 Selecciona una cámara y, opcionalmente, sus entidades de temperatura/humedad existentes.

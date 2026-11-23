@@ -13,6 +13,7 @@ type Hass = {
   callWS<T>(message: Record<string, unknown>): Promise<T>;
   states: Record<string, State>;
   user?: { is_admin: boolean };
+  themes?: { darkMode: boolean };
 };
 type Entry = { id: string; title: string; ready: boolean };
 type Ranges = {
@@ -44,9 +45,9 @@ type Portion = {
 type Options = { lote: Lot; fecha: string; porciones: Portion[] };
 
 const inputClass =
-  "w-full min-w-0 border border-neutral-500 bg-neutral-950 px-3 py-2 text-neutral-100 focus:outline-2 focus:outline-neutral-200 disabled:opacity-50";
+  "w-full min-w-0 border border-ha-control-border bg-ha-input px-3 py-2 text-ha-text focus:outline-2 focus:outline-ha-text disabled:opacity-50";
 const buttonClass =
-  "border border-neutral-500 bg-neutral-800 px-3 py-2 text-neutral-100 hover:bg-neutral-700 focus:outline-2 focus:outline-neutral-200 disabled:opacity-50 disabled:cursor-not-allowed";
+  "border border-ha-control-border bg-ha-button px-3 py-2 text-ha-text hover:bg-ha-hover focus:outline-2 focus:outline-ha-text disabled:opacity-50 disabled:cursor-not-allowed";
 const zone = () => Intl.DateTimeFormat().resolvedOptions().timeZone;
 const localNow = () => {
   const d = new Date();
@@ -102,7 +103,7 @@ function select(
   return { wrapper, input };
 }
 function status() {
-  const output = el("output", "", "block text-sm text-neutral-300 whitespace-pre-wrap");
+  const output = el("output", "", "block text-sm text-ha-secondary whitespace-pre-wrap");
   output.dataset.status = "";
   output.setAttribute("aria-live", "polite");
   return output;
@@ -111,6 +112,11 @@ function styleRoot(root: ShadowRoot) {
   const style = el("style");
   style.textContent = styles;
   root.replaceChildren(style);
+}
+
+function syncTheme(host: HTMLElement, hass: Hass) {
+  // Native date pickers, selects and checkboxes must follow HA, not the OS theme.
+  host.style.colorScheme = hass.themes ? (hass.themes.darkMode ? "dark" : "light") : "inherit";
 }
 
 abstract class BaseCard extends HTMLElement {
@@ -138,6 +144,7 @@ abstract class BaseCard extends HTMLElement {
   }
   set hass(hass: Hass) {
     this.ha = hass;
+    syncTheme(this, hass);
     this.start();
     this.updateMeasurements();
   }
@@ -161,7 +168,7 @@ abstract class BaseCard extends HTMLElement {
     const card = el(
       "ha-card" as "div",
       "",
-      "block rounded-none bg-neutral-900 text-neutral-100 border border-neutral-600 p-4",
+      "block rounded-none bg-ha-surface text-ha-text border border-ha-border p-4",
     );
     const title = el("h2", this.config.title || this.defaultTitle(), "mb-4 text-xl font-semibold");
     this.body = el("div", "", "grid gap-4");
@@ -248,7 +255,7 @@ abstract class BaseCard extends HTMLElement {
     const dialog = el(
       "dialog",
       "",
-      "fixed inset-0 m-auto w-[min(36rem,95vw)] max-h-[90vh] overflow-y-auto border border-neutral-500 bg-neutral-900 p-5 text-neutral-100 backdrop:bg-black/70",
+      "fixed inset-0 m-auto w-[min(36rem,95vw)] max-h-[90vh] overflow-y-auto border border-ha-control-border bg-ha-surface p-5 text-ha-text backdrop:bg-black/70",
     );
     dialog.append(el("h3", title, "mb-4 text-xl font-semibold"));
     const form = el("form", "", "grid gap-4");
@@ -312,13 +319,13 @@ class CameraCard extends BaseCard {
       const block = el("div");
       const value = el("p", "", "text-lg");
       value.dataset.measurement = key;
-      block.append(el("p", label, "text-sm text-neutral-400"), value);
+      block.append(el("p", label, "text-sm text-ha-secondary"), value);
       readings.append(block);
     }
     this.body.append(
       readings,
       el("p", `Consigna vigente: ${ranges(camera.consigna)}`),
-      el("p", `Origen: ${camera.origen.replaceAll("_", " ")}`, "text-sm text-neutral-400"),
+      el("p", `Origen: ${camera.origen.replaceAll("_", " ")}`, "text-sm text-ha-secondary"),
     );
     if (camera.manualHasta)
       this.body.append(
@@ -329,7 +336,7 @@ class CameraCard extends BaseCard {
         el(
           "p",
           `Propuesta pendiente: ${ranges(camera.pendiente.propuesta)}`,
-          "border-t border-neutral-600 pt-3",
+          "border-t border-ha-border pt-3",
         ),
       );
       this.body.append(button("Ver cambio y confirmar", () => this.confirm(camera)));
@@ -348,7 +355,7 @@ class CameraCard extends BaseCard {
       el(
         "p",
         "La consigna es una referencia de la aplicación, no una orden a un actuador.",
-        "text-xs text-neutral-400",
+        "text-xs text-ha-secondary",
       ),
     );
     this.updateMeasurements();
@@ -407,7 +414,7 @@ class CameraCard extends BaseCard {
       el(
         "p",
         `Horas en ${zone()}. Al finalizar vuelve la última automática confirmada.`,
-        "text-sm text-neutral-400",
+        "text-sm text-ha-secondary",
       ),
     );
     const submit = button("Guardar consigna manual", () => {});
@@ -462,7 +469,7 @@ class LotCard extends BaseCard {
       el(
         "p",
         `Zona horaria: ${zone()}. La API registra la entrada inicial según el plan de movimientos.`,
-        "text-sm text-neutral-400",
+        "text-sm text-ha-secondary",
       ),
       submit,
     );
@@ -600,7 +607,7 @@ class MovementCard extends BaseCard {
         summary.textContent = `${total} ud a mover · ${available - total} ud permanecen en origen. Fecha: ${options.fecha} (${options.lote.zonaHoraria}).`;
       };
       const add = () => {
-        const node = el("fieldset", "", "grid min-w-0 gap-3 border border-neutral-600 p-3");
+        const node = el("fieldset", "", "grid min-w-0 gap-3 border border-ha-border p-3");
         node.append(el("legend", "Destino", "px-1"));
         const target = select(
           "Ubicación de destino",
@@ -624,7 +631,7 @@ class MovementCard extends BaseCard {
             el(
               "p",
               "Procedencia: indica cuántas unidades salen de cada porción.",
-              "text-sm text-neutral-400",
+              "text-sm text-ha-secondary",
             ),
           );
           for (const portion of portions) {
@@ -725,6 +732,7 @@ class CardEditor extends HTMLElement {
   }
   set hass(hass: Hass) {
     this.ha = hass;
+    syncTheme(this, hass);
     void this.load();
   }
   private async load() {
@@ -750,7 +758,7 @@ class CardEditor extends HTMLElement {
         el(
           "p",
           String((error as { message?: string }).message ?? error),
-          "p-3 text-neutral-100 bg-neutral-900",
+          "p-3 text-ha-text bg-ha-surface",
         ),
       );
     } finally {
@@ -776,7 +784,7 @@ class CardEditor extends HTMLElement {
   }
   private render() {
     styleRoot(this.shadowRoot!);
-    const form = el("div", "", "grid gap-4 bg-neutral-900 p-4 text-neutral-100");
+    const form = el("div", "", "grid gap-4 bg-ha-surface p-4 text-ha-text");
     const title = field("Título (opcional)", "text", this.config.title ?? "", false);
     title.input.onchange = () => this.change("title", title.input.value);
     const entry = select(
@@ -820,7 +828,7 @@ class CardEditor extends HTMLElement {
       el(
         "p",
         "Si no hay conexiones, añade y configura primero la integración Registros Cámaras. Los controles requieren un usuario administrador de HA.",
-        "text-sm text-neutral-400",
+        "text-sm text-ha-secondary",
       ),
     );
     this.shadowRoot!.append(form);
