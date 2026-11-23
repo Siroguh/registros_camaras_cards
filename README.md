@@ -1,14 +1,19 @@
 # Registros Cámaras — Tarjetas
 
+Estas tarjetas pertenecen al proyecto **[Siroguh/registros_camaras](https://github.com/Siroguh/registros_camaras)**,
+su repositorio padre y servidor API. El código fuente, las incidencias y las releases
+de las tarjetas se mantienen exclusivamente en este repositorio independiente:
+**[Siroguh/registros_camaras_cards](https://github.com/Siroguh/registros_camaras_cards)**.
+
 Tres tarjetas independientes para Home Assistant: **Cámara**, **Nuevo lote** y
 **Movimiento**. Un único complemento frontend, instalado y actualizado con HACS.
-Requiere la integración [Registros Cámaras](https://github.com/Siroguh/ha-registros-camaras)
+Requiere la integración [Registros Cámaras](https://github.com/Siroguh/registros_camaras_home_assistant)
 **0.2.0 o posterior**, una conexión configurada y un usuario administrador de HA.
 
 ## Instalación desde la interfaz
 
 1. Abre **HACS → Repositorios personalizados**.
-2. Añade `https://github.com/Siroguh/registros-camaras-cards`, tipo **Dashboard**.
+2. Añade `https://github.com/Siroguh/registros_camaras_cards`, tipo **Dashboard**.
 3. Busca **Registros Cámaras — Tarjetas** y pulsa **Descargar**.
 4. Recarga la página de Home Assistant.
 5. Abre **Editar dashboard → Añadir tarjeta** y busca **Registros Cámaras**.
@@ -69,11 +74,12 @@ actualizan cada 60 segundos; los formularios conservan su contenido durante el s
 
 ## Desarrollo y distribución
 
-Fuente principal: `apps/home-assistant-cards` del monorepo Registros Cámaras.
-Desde allí: `pnpm --filter @registros/home-assistant-cards build` y
-`pnpm ha:cards:export /ruta/a/directorio-nuevo`.
-La exportación incluye el código fuente y el bundle; no incluye configuración local.
-En el repositorio independiente: `pnpm install`, `pnpm typecheck`, `pnpm build`.
+Este repositorio es la única fuente de las tarjetas y su distribución para HACS.
+Se desarrollan directamente en `src/`; no se exportan desde el repositorio padre.
+El servidor y sus reglas pertenecen a [registros_camaras](https://github.com/Siroguh/registros_camaras),
+y la integración Python a [registros_camaras_home_assistant](https://github.com/Siroguh/registros_camaras_home_assistant).
+
+Desde este repositorio: `pnpm install --frozen-lockfile`, `pnpm typecheck`, `pnpm build`.
 El bundle de `dist/` se publica como `registros-camaras-cards.js` en la raíz y en la release.
 
 Copyright (C) 2026 Siroguh. **GPL-3.0-only**, consulta [LICENSE](LICENSE).
