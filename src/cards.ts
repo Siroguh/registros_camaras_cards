@@ -185,7 +185,7 @@ abstract class BaseCard extends HTMLElement {
     this.mount();
     clearInterval(this.timer);
     if (!this.config.entry_id) {
-      this.message("Edita la tarjeta y selecciona la conexión de Registros Cámaras.");
+      this.message("Conexión sin configurar.");
       return;
     }
     void this.run(async () => {
@@ -199,7 +199,7 @@ abstract class BaseCard extends HTMLElement {
   }
   protected async request<T>(operation: string, data: Record<string, unknown> = {}): Promise<T> {
     if (!this.ha || !this.config.entry_id)
-      throw new Error("Selecciona una conexión en el editor de la tarjeta.");
+      throw new Error("Conexión sin configurar.");
     const generation = this.generation;
     const result = await this.ha.callWS<T>({
       type: "registros_camaras/operation",
@@ -320,7 +320,7 @@ class CameraCard extends BaseCard {
     const camera = this.camera();
     this.heading.textContent = this.config.title || camera?.nombre || this.defaultTitle();
     if (!camera) {
-      this.body.append(el("p", "Selecciona una cámara en el editor visual."));
+      this.body.append(el("p", "Cámara sin configurar."));
       return;
     }
     const readings = el("div", "", "grid grid-cols-2 gap-3");
@@ -336,9 +336,10 @@ class CameraCard extends BaseCard {
     }
     this.body.append(
       readings,
-      el("p", `Consigna: ${ranges(camera.consigna)}`),
-      el("p", `Origen: ${camera.origen.replaceAll("_", " ")}`, "text-sm text-ha-secondary"),
+      el("p", camera.consigna ? `Consigna: ${ranges(camera.consigna)}` : "Sin consigna"),
     );
+    if (camera.origen === "automatica_confirmada")
+      this.body.append(el("p", "Automática", "text-sm text-ha-secondary"));
     if (camera.manualHasta)
       this.body.append(
         el("p", `Manual hasta ${new Date(camera.manualHasta).toLocaleString()}`),
@@ -347,11 +348,11 @@ class CameraCard extends BaseCard {
       this.body.append(
         el(
           "p",
-          `Propuesta pendiente: ${ranges(camera.pendiente.propuesta)}`,
+          `Pendiente: ${ranges(camera.pendiente.propuesta)}`,
           "border-t border-solid border-ha-border pt-3",
         ),
       );
-      this.body.append(button("Ver cambio y confirmar", () => this.confirm(camera)));
+      this.body.append(button("Revisar", () => this.confirm(camera)));
     }
     this.body.append(
       button("Consigna manual", () => this.manual(camera)),
@@ -367,13 +368,12 @@ class CameraCard extends BaseCard {
   }
   private confirm(camera: Camera) {
     const pending = camera.pendiente!;
-    const { dialog, form } = this.dialog("Confirmar cambio automático");
+    const { dialog, form } = this.dialog("Cambio de consigna");
     form.append(
       el("p", `Actual: ${ranges(camera.consigna)}`),
       el("p", `Propuesta: ${ranges(pending.propuesta)}`),
-      el("p", pending.motivo),
     );
-    const submit = button("Confirmar esta propuesta", () => {});
+    const submit = button("Confirmar", () => {});
     submit.type = "submit";
     form.append(submit);
     form.onsubmit = (event) => {
@@ -391,7 +391,7 @@ class CameraCard extends BaseCard {
     dialog.showModal();
   }
   private manual(camera: Camera) {
-    const { dialog, form } = this.dialog("Consigna manual temporal");
+    const { dialog, form } = this.dialog("Consigna manual");
     const id = crypto.randomUUID();
     const start = field("Desde", "datetime-local", localNow());
     const end = field("Hasta", "datetime-local");
@@ -415,7 +415,7 @@ class CameraCard extends BaseCard {
     const reason = field("Motivo", "text", "", false);
     reason.input.maxLength = 2000;
     form.append(reason.wrapper);
-    const submit = button("Guardar consigna manual", () => {});
+    const submit = button("Guardar", () => {});
     submit.type = "submit";
     form.append(submit);
     form.onsubmit = (event) => {
@@ -453,12 +453,12 @@ class LotCard extends BaseCard {
     const form = el("form", "", "grid gap-4");
     const code = field("Código del lote");
     code.input.maxLength = 200;
-    const quantity = field("Cantidad (unidades)", "number");
+    const quantity = field("Cantidad (ud)", "number");
     quantity.input.min = "1";
     quantity.input.step = "1";
     quantity.input.max = String(Number.MAX_SAFE_INTEGER);
     const start = field("Fecha de inicio", "date", localNow().slice(0, 10));
-    const submit = button("Crear lote", () => {});
+    const submit = button("Crear", () => {});
     submit.type = "submit";
     form.append(code.wrapper, quantity.wrapper, start.wrapper, submit);
     form.onsubmit = (event) => {
@@ -474,8 +474,8 @@ class LotCard extends BaseCard {
         const result = await this.request<{ lote: Lot }>("create_lot", { payload });
         this.requestId = crypto.randomUUID();
         this.body.replaceChildren(
-          el("p", `Lote ${result.lote.codigo} creado.`, "font-semibold"),
-          button("Crear otro lote", () => this.render()),
+          el("p", `${result.lote.codigo} · Creado`, "font-semibold"),
+          button("Nuevo", () => this.render()),
         );
       });
     };
@@ -488,7 +488,7 @@ class MovementCard extends BaseCard {
     return { type: "custom:registros-movement-card" };
   }
   protected defaultTitle() {
-    return "Registrar movimiento";
+    return "Nuevo movimiento";
   }
   private lots: Lot[] = [];
   private options?: Options;
@@ -500,11 +500,11 @@ class MovementCard extends BaseCard {
   }
   protected async render() {
     this.body.replaceChildren();
-    const search = field("Filtrar lotes por código", "search", "", false);
+    const search = field("Buscar lote", "search", "", false);
     const lot = select("Lote", []);
-    const date = field("Fecha efectiva del movimiento", "date", localNow().slice(0, 10));
+    const date = field("Fecha", "date", localNow().slice(0, 10));
     const rest = el("div", "", "grid gap-4");
-    const more = button("Cargar más lotes", () => this.run(() => loadLots(false)));
+    const more = button("Más", () => this.run(() => loadLots(false)));
     const loadLots = async (reset = true) => {
       const sequence = ++this.sequence;
       const result = await this.request<{ lotes: Lot[]; total: number }>("lots", {
@@ -556,7 +556,7 @@ class MovementCard extends BaseCard {
     const sourceIds = [...new Set(options.porciones.map((p) => p.ubicacionId))];
     if (!sourceIds.length) {
       container.append(
-        el("p", "Sin porciones disponibles en esta fecha."),
+        el("p", "Sin existencias."),
       );
       return;
     }
@@ -572,17 +572,17 @@ class MovementCard extends BaseCard {
       const portions = options.porciones.filter((p) => p.ubicacionId === source.input.value);
       const available = portions.reduce((sum, p) => sum + p.restante, 0);
       const mode = select(
-        "Tipo de movimiento",
+        "Tipo",
         [
-          { value: "full", label: `Mover todo (${available} ud)` },
-          { value: "split", label: "Parcial o reparto entre destinos" },
+          { value: "full", label: "Completo" },
+          { value: "split", label: "Parcial / reparto" },
         ],
         "full",
       );
       const form = el("form", "", "grid gap-4");
       const rows = el("div", "", "grid gap-4");
       const summary = el("p");
-      const mixing = field("El origen está físicamente mezclado", "checkbox", "", false);
+      const mixing = field("Mezcla física", "checkbox", "", false);
       const destinations: {
         node: HTMLElement;
         location: HTMLSelectElement;
@@ -592,13 +592,12 @@ class MovementCard extends BaseCard {
       const id = crypto.randomUUID();
       const updateSummary = () => {
         const total = destinations.reduce((sum, d) => sum + Number(d.amount.value), 0);
-        summary.textContent = `${total} ud a mover · ${available - total} ud permanecen en origen. Fecha: ${options.fecha} (${options.lote.zonaHoraria}).`;
+        summary.textContent = `Salida: ${total} ud · Restante: ${available - total} ud`;
       };
       const add = () => {
-        const node = el("fieldset", "", "grid min-w-0 gap-3 border border-solid border-ha-border p-3");
-        node.append(el("legend", "Destino", "px-1"));
+        const node = el("div", "", "grid min-w-0 gap-3 border border-solid border-ha-border p-3");
         const target = select(
-          "Ubicación de destino",
+          "Destino",
           (this.snapshot?.ubicaciones ?? [])
             .filter((l) => l.id !== source.input.value)
             .map((l) => ({ value: l.id, label: l.nombre })),
@@ -624,7 +623,7 @@ class MovementCard extends BaseCard {
           );
           for (const portion of portions) {
             const f = field(
-              `#${portion.orden} · ${portion.fecha} · ${portion.precision} · disponibles ${portion.restante} ud`,
+              `#${portion.orden} · ${portion.fecha} · ${portion.precision} · ${portion.restante} ud`,
               "number",
               "0",
             );
@@ -639,7 +638,7 @@ class MovementCard extends BaseCard {
         destinations.push(row);
         if (mode.input.value !== "full")
           node.append(
-            button("Quitar destino", () => {
+            button("Quitar", () => {
               destinations.splice(destinations.indexOf(row), 1);
               node.remove();
               updateSummary();
@@ -660,7 +659,7 @@ class MovementCard extends BaseCard {
       };
       mode.input.onchange = reset;
       mixing.input.onchange = reset;
-      const submit = button("Registrar movimiento", () => {});
+      const submit = button("Registrar", () => {});
       submit.type = "submit";
       form.append(mode.wrapper, mixing.wrapper, rows, addButton, summary, submit);
       content.append(form);
@@ -690,7 +689,7 @@ class MovementCard extends BaseCard {
           container.replaceChildren(
             el(
               "p",
-              "Movimiento registrado.",
+              "Registrado",
               "font-semibold",
             ),
           );
@@ -776,7 +775,7 @@ class CardEditor extends HTMLElement {
     const title = field("Título (opcional)", "text", this.config.title ?? "", false);
     title.input.onchange = () => this.change("title", title.input.value);
     const entry = select(
-      "Conexión de Registros Cámaras",
+      "Conexión",
       this.entries.map((e) => ({
         value: e.id,
         label: `${e.title}${e.ready ? "" : " · sin conexión"}`,
@@ -794,8 +793,8 @@ class CardEditor extends HTMLElement {
       camera.input.onchange = () => this.change("location_id", camera.input.value);
       form.append(camera.wrapper);
       for (const [key, label, deviceClass] of [
-        ["temperature_entity", "Sensor de temperatura existente (opcional)", "temperature"],
-        ["humidity_entity", "Sensor de humedad existente (opcional)"],
+        ["temperature_entity", "Temperatura (opcional)", "temperature"],
+        ["humidity_entity", "Humedad (opcional)"],
       ] as const) {
         const items = Object.entries(this.ha?.states ?? {})
           .filter(
@@ -828,19 +827,19 @@ registry.customCards.push(
   {
     type: "registros-camera-card",
     name: "Registros Cámaras · Cámara",
-    description: "Estado, propuestas automáticas y consignas manuales.",
+    description: "",
     preview: false,
   },
   {
     type: "registros-lot-card",
     name: "Registros Cámaras · Nuevo lote",
-    description: "Alta de lotes mediante la API.",
+    description: "",
     preview: false,
   },
   {
     type: "registros-movement-card",
-    name: "Registros Cámaras · Movimiento",
-    description: "Traslados y repartos con fecha y procedencia.",
+    name: "Registros Cámaras · Nuevo movimiento",
+    description: "",
     preview: false,
   },
 );

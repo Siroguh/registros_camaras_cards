@@ -6,7 +6,7 @@ de las tarjetas se mantienen exclusivamente en este repositorio independiente:
 **[Siroguh/registros_camaras_cards](https://github.com/Siroguh/registros_camaras_cards)**.
 
 Tres tarjetas independientes para Home Assistant: **Cámara**, **Nuevo lote** y
-**Movimiento**. Un único complemento frontend, instalado y actualizado con HACS.
+**Nuevo movimiento**. Un único complemento frontend, instalado y actualizado con HACS.
 Requiere la integración [Registros Cámaras](https://github.com/Siroguh/registros_camaras_home_assistant)
 **0.2.0 o posterior**, una conexión configurada y un usuario administrador de HA.
 
@@ -17,7 +17,7 @@ Requiere la integración [Registros Cámaras](https://github.com/Siroguh/registr
 3. Busca **Registros Cámaras — Tarjetas** y pulsa **Descargar**.
 4. Recarga la página de Home Assistant.
 5. Abre **Editar dashboard → Añadir tarjeta** y busca **Registros Cámaras**.
-6. Elige Cámara, Nuevo lote o Movimiento y selecciona la conexión en su editor visual.
+6. Elige Cámara, Nuevo lote o Nuevo movimiento y selecciona la conexión en su editor visual.
 
 HACS descarga el recurso JavaScript y lo registra en dashboards gestionados desde
 la interfaz (modo storage). No hay que copiar archivos, editar el filesystem ni
@@ -43,7 +43,7 @@ Selecciona una cámara y, opcionalmente, sus entidades de temperatura/humedad ex
 Presenta mediciones, rangos de consigna vigente, origen, fin de excepción manual,
 lotes presentes y propuesta pendiente. No duplica sensores ambientales.
 
-- **Ver cambio y confirmar:** diálogo con consigna actual, propuesta y motivo.
+- **Revisar:** diálogo con consigna actual y propuesta.
   Confirma el identificador mostrado; una propuesta obsoleta se rechaza.
 - **Consigna manual:** diálogo con rangos, inicio, fin obligatorio y motivo.
 - **Actualizar:** vuelve a consultar la API.
@@ -57,7 +57,7 @@ Código, cantidad y fecha inicial. La API aplica la regla existente de entrada e
 cámara 102 al día siguiente. Las fechas se interpretan en la zona horaria indicada
 en el formulario. El alta usa un UUID estable para evitar duplicados al reintentar.
 
-### Movimiento
+### Nuevo movimiento
 
 Filtra lotes, selecciona uno y una fecha. La API devuelve las porciones disponibles
 en esa fecha y la revisión del lote; la tarjeta no reconstruye genealogías.
