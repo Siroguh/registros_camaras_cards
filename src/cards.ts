@@ -14,6 +14,7 @@ type Hass = {
   states: Record<string, State>;
   user?: { is_admin: boolean };
   themes?: { darkMode: boolean };
+  locale?: { language: string };
 };
 type Entry = { id: string; title: string; ready: boolean };
 type Ranges = {
@@ -45,9 +46,9 @@ type Portion = {
 type Options = { lote: Lot; fecha: string; porciones: Portion[] };
 
 const inputClass =
-  "w-full min-w-0 border border-ha-control-border bg-ha-input px-3 py-2 text-ha-text focus:outline-2 focus:outline-ha-text disabled:opacity-50";
+  "w-full min-w-0 border border-solid border-ha-control-border bg-ha-input px-3 py-2 text-ha-text focus:outline-2 focus:outline-ha-text disabled:opacity-50";
 const buttonClass =
-  "border border-ha-control-border bg-ha-button px-3 py-2 text-ha-text hover:bg-ha-hover focus:outline-2 focus:outline-ha-text disabled:opacity-50 disabled:cursor-not-allowed";
+  "border border-solid border-ha-control-border bg-ha-button px-3 py-2 text-ha-text hover:bg-ha-hover focus:outline-2 focus:outline-ha-text disabled:opacity-50 disabled:cursor-not-allowed";
 const zone = () => Intl.DateTimeFormat().resolvedOptions().timeZone;
 const localNow = () => {
   const d = new Date();
@@ -103,7 +104,7 @@ function select(
   return { wrapper, input };
 }
 function status() {
-  const output = el("output", "", "block text-sm text-ha-secondary whitespace-pre-wrap");
+  const output = el("output", "", "block empty:hidden text-sm text-ha-secondary whitespace-pre-wrap");
   output.dataset.status = "";
   output.setAttribute("aria-live", "polite");
   return output;
@@ -123,6 +124,7 @@ abstract class BaseCard extends HTMLElement {
   protected config: Config = { type: "" };
   protected ha?: Hass;
   protected body = el("div");
+  protected heading = el("h2");
   protected snapshot?: Snapshot;
   protected busy = false;
   private timer?: ReturnType<typeof setInterval>;
@@ -168,11 +170,13 @@ abstract class BaseCard extends HTMLElement {
     const card = el(
       "ha-card" as "div",
       "",
-      "block rounded-none bg-ha-surface text-ha-text border border-ha-border p-4",
+      "block [--ha-card-border-radius:0px] [--ha-card-border-width:0px]",
     );
-    const title = el("h2", this.config.title || this.defaultTitle(), "mb-4 text-xl font-semibold");
+    const panel = el("div", "", "bg-ha-surface text-ha-text border border-solid border-ha-control-border p-4");
+    this.heading = el("h2", this.config.title || this.defaultTitle(), "mb-4 text-xl font-semibold");
     this.body = el("div", "", "grid gap-4");
-    card.append(title, this.body, status());
+    panel.append(this.heading, this.body, status());
+    card.append(panel);
     root.append(card);
   }
   private start() {
@@ -224,7 +228,7 @@ abstract class BaseCard extends HTMLElement {
     previous.forEach(([n]) => (n.disabled = true));
     try {
       await work();
-      this.message("Operación completada.");
+      this.message("");
     } catch (error) {
       this.message(
         error instanceof Error
@@ -255,7 +259,7 @@ abstract class BaseCard extends HTMLElement {
     const dialog = el(
       "dialog",
       "",
-      "fixed inset-0 m-auto w-[min(36rem,95vw)] max-h-[90vh] overflow-y-auto border border-ha-control-border bg-ha-surface p-5 text-ha-text backdrop:bg-black/70",
+      "fixed inset-0 m-auto w-[min(36rem,95vw)] max-h-[90vh] overflow-y-auto border border-solid border-ha-control-border bg-ha-surface p-5 text-ha-text backdrop:bg-black/70",
     );
     dialog.append(el("h3", title, "mb-4 text-xl font-semibold"));
     const form = el("form", "", "grid gap-4");
@@ -290,6 +294,10 @@ class CameraCard extends BaseCard {
     if (!this.shadowRoot!.querySelector("dialog")) this.render();
   }
   protected updateMeasurements() {
+    const format = new Intl.NumberFormat(this.ha?.locale?.language, {
+      maximumFractionDigits: 2,
+      useGrouping: false,
+    });
     for (const [key, id] of [
       ["temperature", this.config.temperature_entity],
       ["humidity", this.config.humidity_entity],
@@ -297,24 +305,28 @@ class CameraCard extends BaseCard {
       const node = this.shadowRoot!.querySelector(`[data-measurement="${key}"]`);
       if (node) {
         const state = id ? this.ha?.states[id] : undefined;
-        node.textContent = state
-          ? `${state.state} ${state.attributes.unit_of_measurement ?? ""}`
-          : "Sin sensor seleccionado";
+        const value = state?.state.trim() ?? "";
+        const number = value ? Number(value) : NaN;
+        node.textContent = Number.isFinite(number)
+          ? `${format.format(number)} ${state?.attributes.unit_of_measurement ?? ""}`.trim()
+          : value && !["unknown", "unavailable"].includes(value)
+            ? value
+            : "—";
       }
     }
   }
   protected render() {
     this.body.replaceChildren();
     const camera = this.camera();
+    this.heading.textContent = this.config.title || camera?.nombre || this.defaultTitle();
     if (!camera) {
       this.body.append(el("p", "Selecciona una cámara en el editor visual."));
       return;
     }
-    this.body.append(el("h3", camera.nombre, "font-semibold"));
     const readings = el("div", "", "grid grid-cols-2 gap-3");
     for (const [key, label] of [
-      ["temperature", "Temperatura medida"],
-      ["humidity", "Humedad medida"],
+      ["temperature", "Temperatura"],
+      ["humidity", "Humedad"],
     ]) {
       const block = el("div");
       const value = el("p", "", "text-lg");
@@ -324,19 +336,19 @@ class CameraCard extends BaseCard {
     }
     this.body.append(
       readings,
-      el("p", `Consigna vigente: ${ranges(camera.consigna)}`),
+      el("p", `Consigna: ${ranges(camera.consigna)}`),
       el("p", `Origen: ${camera.origen.replaceAll("_", " ")}`, "text-sm text-ha-secondary"),
     );
     if (camera.manualHasta)
       this.body.append(
-        el("p", `Excepción manual hasta ${new Date(camera.manualHasta).toLocaleString()}`),
+        el("p", `Manual hasta ${new Date(camera.manualHasta).toLocaleString()}`),
       );
     if (camera.pendiente) {
       this.body.append(
         el(
           "p",
           `Propuesta pendiente: ${ranges(camera.pendiente.propuesta)}`,
-          "border-t border-ha-border pt-3",
+          "border-t border-solid border-ha-border pt-3",
         ),
       );
       this.body.append(button("Ver cambio y confirmar", () => this.confirm(camera)));
@@ -346,18 +358,11 @@ class CameraCard extends BaseCard {
       button("Actualizar", () => this.refresh()),
     );
     const lots = el("details");
-    lots.append(el("summary", `Lotes presentes (${camera.lotes.length})`, "cursor-pointer"));
+    lots.append(el("summary", `Lotes (${camera.lotes.length})`, "cursor-pointer"));
     const list = el("ul", "", "mt-2 grid gap-2");
     for (const lot of camera.lotes) list.append(el("li", `${lot.codigo} · ${lot.cantidad} ud`));
     lots.append(list);
     this.body.append(lots);
-    this.body.append(
-      el(
-        "p",
-        "La consigna es una referencia de la aplicación, no una orden a un actuador.",
-        "text-xs text-ha-secondary",
-      ),
-    );
     this.updateMeasurements();
   }
   private confirm(camera: Camera) {
@@ -389,7 +394,7 @@ class CameraCard extends BaseCard {
     const { dialog, form } = this.dialog("Consigna manual temporal");
     const id = crypto.randomUUID();
     const start = field("Desde", "datetime-local", localNow());
-    const end = field("Hasta (obligatorio)", "datetime-local");
+    const end = field("Hasta", "datetime-local");
     form.append(start.wrapper, end.wrapper);
     const values = new Map<string, HTMLInputElement>();
     for (const [key, label] of [
@@ -409,14 +414,7 @@ class CameraCard extends BaseCard {
     }
     const reason = field("Motivo", "text", "", false);
     reason.input.maxLength = 2000;
-    form.append(
-      reason.wrapper,
-      el(
-        "p",
-        `Horas en ${zone()}. Al finalizar vuelve la última automática confirmada.`,
-        "text-sm text-ha-secondary",
-      ),
-    );
+    form.append(reason.wrapper);
     const submit = button("Guardar consigna manual", () => {});
     submit.type = "submit";
     form.append(submit);
@@ -462,17 +460,7 @@ class LotCard extends BaseCard {
     const start = field("Fecha de inicio", "date", localNow().slice(0, 10));
     const submit = button("Crear lote", () => {});
     submit.type = "submit";
-    form.append(
-      code.wrapper,
-      quantity.wrapper,
-      start.wrapper,
-      el(
-        "p",
-        `Zona horaria: ${zone()}. La API registra la entrada inicial según el plan de movimientos.`,
-        "text-sm text-ha-secondary",
-      ),
-      submit,
-    );
+    form.append(code.wrapper, quantity.wrapper, start.wrapper, submit);
     form.onsubmit = (event) => {
       event.preventDefault();
       const payload = {
@@ -568,7 +556,7 @@ class MovementCard extends BaseCard {
     const sourceIds = [...new Set(options.porciones.map((p) => p.ubicacionId))];
     if (!sourceIds.length) {
       container.append(
-        el("p", "No hay porciones disponibles en esa fecha. Revisa la fecha o el lote."),
+        el("p", "Sin porciones disponibles en esta fecha."),
       );
       return;
     }
@@ -607,7 +595,7 @@ class MovementCard extends BaseCard {
         summary.textContent = `${total} ud a mover · ${available - total} ud permanecen en origen. Fecha: ${options.fecha} (${options.lote.zonaHoraria}).`;
       };
       const add = () => {
-        const node = el("fieldset", "", "grid min-w-0 gap-3 border border-ha-border p-3");
+        const node = el("fieldset", "", "grid min-w-0 gap-3 border border-solid border-ha-border p-3");
         node.append(el("legend", "Destino", "px-1"));
         const target = select(
           "Ubicación de destino",
@@ -630,7 +618,7 @@ class MovementCard extends BaseCard {
           node.append(
             el(
               "p",
-              "Procedencia: indica cuántas unidades salen de cada porción.",
+              "Procedencia",
               "text-sm text-ha-secondary",
             ),
           );
@@ -702,7 +690,7 @@ class MovementCard extends BaseCard {
           container.replaceChildren(
             el(
               "p",
-              "Movimiento registrado. Selecciona de nuevo el lote para cargar las cantidades actualizadas.",
+              "Movimiento registrado.",
               "font-semibold",
             ),
           );
@@ -824,13 +812,6 @@ class CardEditor extends HTMLElement {
         form.append(sensor.wrapper);
       }
     }
-    form.append(
-      el(
-        "p",
-        "Si no hay conexiones, añade y configura primero la integración Registros Cámaras. Los controles requieren un usuario administrador de HA.",
-        "text-sm text-ha-secondary",
-      ),
-    );
     this.shadowRoot!.append(form);
   }
 }
