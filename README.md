@@ -8,7 +8,7 @@ de las tarjetas se mantienen exclusivamente en este repositorio independiente:
 Tres tarjetas independientes para Home Assistant: **Cámara**, **Nuevo lote** y
 **Nuevo movimiento**. Un único complemento frontend, instalado y actualizado con HACS.
 Requiere la integración [Registros Cámaras](https://github.com/Siroguh/registros_camaras_home_assistant)
-**0.2.0 o posterior**, una conexión configurada y un usuario administrador de HA.
+**0.3.0 o posterior**, una conexión configurada y un usuario administrador de HA.
 
 ## Instalación desde la interfaz
 
@@ -46,6 +46,9 @@ lotes presentes y propuesta pendiente. No duplica sensores ambientales.
 - **Revisar:** diálogo con consigna actual y propuesta.
   Confirma el identificador mostrado; una propuesta obsoleta se rechaza.
 - **Consigna manual:** diálogo con rangos, inicio, fin obligatorio y motivo.
+- **Editar manual:** modifica valores o intervalo de la consigna vigente, con control de revisión.
+- **Finalizar manual:** confirmación breve; cierra el intervalo con la hora del servidor y
+  recupera la última automática confirmada, sin aceptar una propuesta pendiente.
 - **Actualizar:** vuelve a consultar la API.
 
 Las consignas son referencias de la aplicación, no órdenes directas a actuadores.
@@ -64,6 +67,11 @@ en esa fecha y la revisión del lote; la tarjeta no reconstruye genealogías.
 Permite mover todo a un destino o repartir cantidades, con selección explícita de
 procedencias por destino. También permite declarar una mezcla física del origen.
 La API valida cantidades, fechas, procedencias y cambios concurrentes.
+**Movimientos** muestra los más recientes del lote y permite cargar más.
+**Corregir** reutiliza el formulario de origen, destinos y procedencias, con la fecha y
+cantidades existentes. La API devuelve las existencias anteriores a esa operación y
+revalida todo el historial al guardar, incluidos los movimientos posteriores.
+La entrada inicial se consulta pero no se corrige desde esta tarjeta.
 
 ## Arquitectura
 

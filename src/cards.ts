@@ -30,6 +30,7 @@ type Camera = {
   origen: string;
   consigna: Ranges | null;
   manualHasta: string | null;
+  consignaId: string | null;
   lotes: { codigo: string; cantidad: number }[];
   pendiente: { id: string; propuesta: Ranges | null; motivo: string; detectadoEn: string } | null;
 };
@@ -44,6 +45,29 @@ type Portion = {
   orden: number;
 };
 type Options = { lote: Lot; fecha: string; porciones: Portion[] };
+type Manual = Ranges & {
+  id: string;
+  revision: number;
+  zonaHoraria: string;
+  vigenteDesde: string;
+  vigenteHasta: string;
+  motivo: string | null;
+};
+type Destination = {
+  ubicacionId: string;
+  cantidad: number;
+  procedencias?: { porcionId: string; cantidad: number }[];
+};
+type Movement = {
+  id: string;
+  orden: number;
+  fecha: string;
+  ubicacionOrigenId: string | null;
+  destinos: Destination[];
+  mezclarOrigen?: boolean;
+  corregidoEn: string | null;
+};
+type History = { lote: Lot; movimientos: Movement[] };
 
 const inputClass =
   "w-full min-w-0 border border-solid border-ha-control-border bg-ha-input px-3 py-2 text-ha-text focus:outline-2 focus:outline-ha-text disabled:opacity-50";
@@ -53,6 +77,10 @@ const zone = () => Intl.DateTimeFormat().resolvedOptions().timeZone;
 const localNow = () => {
   const d = new Date();
   return new Date(d.getTime() - d.getTimezoneOffset() * 60_000).toISOString().slice(0, 16);
+};
+const localTime = (value: string) => {
+  const date = new Date(value);
+  return new Date(date.getTime() - date.getTimezoneOffset() * 60_000).toISOString().slice(0, 16);
 };
 const ranges = (r: Ranges | null) =>
   r
@@ -104,7 +132,11 @@ function select(
   return { wrapper, input };
 }
 function status() {
-  const output = el("output", "", "block empty:hidden text-sm text-ha-secondary whitespace-pre-wrap");
+  const output = el(
+    "output",
+    "",
+    "block empty:hidden text-sm text-ha-secondary whitespace-pre-wrap",
+  );
   output.dataset.status = "";
   output.setAttribute("aria-live", "polite");
   return output;
@@ -172,7 +204,11 @@ abstract class BaseCard extends HTMLElement {
       "",
       "block [--ha-card-border-radius:0px] [--ha-card-border-width:0px]",
     );
-    const panel = el("div", "", "bg-ha-surface text-ha-text border border-solid border-ha-control-border p-4");
+    const panel = el(
+      "div",
+      "",
+      "bg-ha-surface text-ha-text border border-solid border-ha-control-border p-4",
+    );
     this.heading = el("h2", this.config.title || this.defaultTitle(), "mb-4 text-xl font-semibold");
     this.body = el("div", "", "grid gap-4");
     panel.append(this.heading, this.body, status());
@@ -198,8 +234,7 @@ abstract class BaseCard extends HTMLElement {
     }, 60_000);
   }
   protected async request<T>(operation: string, data: Record<string, unknown> = {}): Promise<T> {
-    if (!this.ha || !this.config.entry_id)
-      throw new Error("Conexión sin configurar.");
+    if (!this.ha || !this.config.entry_id) throw new Error("Conexión sin configurar.");
     const generation = this.generation;
     const result = await this.ha.callWS<T>({
       type: "registros_camaras/operation",
@@ -341,9 +376,7 @@ class CameraCard extends BaseCard {
     if (camera.origen === "automatica_confirmada")
       this.body.append(el("p", "Automática", "text-sm text-ha-secondary"));
     if (camera.manualHasta)
-      this.body.append(
-        el("p", `Manual hasta ${new Date(camera.manualHasta).toLocaleString()}`),
-      );
+      this.body.append(el("p", `Manual hasta ${new Date(camera.manualHasta).toLocaleString()}`));
     if (camera.pendiente) {
       this.body.append(
         el(
@@ -354,10 +387,19 @@ class CameraCard extends BaseCard {
       );
       this.body.append(button("Revisar", () => this.confirm(camera)));
     }
-    this.body.append(
-      button("Consigna manual", () => this.manual(camera)),
-      button("Actualizar", () => this.refresh()),
-    );
+    if (camera.manualHasta) {
+      const actions = el("div", "", "flex flex-wrap gap-2");
+      actions.append(
+        button("Editar manual", () =>
+          this.run(async () => this.manual(camera, await this.currentManual(camera))),
+        ),
+        button("Finalizar manual", () =>
+          this.run(async () => this.finishManual(camera, await this.currentManual(camera))),
+        ),
+      );
+      this.body.append(actions);
+    } else this.body.append(button("Consigna manual", () => this.manual(camera)));
+    this.body.append(button("Actualizar", () => this.refresh()));
     const lots = el("details");
     lots.append(el("summary", `Lotes (${camera.lotes.length})`, "cursor-pointer"));
     const list = el("ul", "", "mt-2 grid gap-2");
@@ -390,11 +432,42 @@ class CameraCard extends BaseCard {
     };
     dialog.showModal();
   }
-  private manual(camera: Camera) {
+  private async currentManual(camera: Camera) {
+    const result = await this.request<{ vigente: Manual | null }>("manuals", {
+      location_id: camera.ubicacionId,
+    });
+    if (!result.vigente || result.vigente.id !== camera.consignaId)
+      throw new Error("La consigna ha cambiado. Actualiza la tarjeta.");
+    return result.vigente;
+  }
+  private finishManual(camera: Camera, manual: Manual) {
+    const { dialog, form } = this.dialog("Finalizar manual");
+    form.append(el("p", ranges(manual)));
+    const submit = button("Confirmar", () => {});
+    submit.type = "submit";
+    form.append(submit);
+    form.onsubmit = (event) => {
+      event.preventDefault();
+      void this.run(async () => {
+        await this.request("finish_manual", {
+          location_id: camera.ubicacionId,
+          manual_id: manual.id,
+          payload: { revision: manual.revision },
+        });
+        dialog.close();
+        this.snapshot = await this.request<Snapshot>("snapshot");
+        this.render();
+      });
+    };
+    dialog.showModal();
+  }
+  private manual(camera: Camera, existing?: Manual) {
     const { dialog, form } = this.dialog("Consigna manual");
-    const id = crypto.randomUUID();
-    const start = field("Desde", "datetime-local", localNow());
-    const end = field("Hasta", "datetime-local");
+    const id = existing?.id ?? crypto.randomUUID();
+    const startValue = existing ? localTime(existing.vigenteDesde) : localNow();
+    const endValue = existing ? localTime(existing.vigenteHasta) : "";
+    const start = field("Desde", "datetime-local", startValue);
+    const end = field("Hasta", "datetime-local", endValue);
     form.append(start.wrapper, end.wrapper);
     const values = new Map<string, HTMLInputElement>();
     for (const [key, label] of [
@@ -403,7 +476,7 @@ class CameraCard extends BaseCard {
       ["humedadMin", "Humedad mínima (%)"],
       ["humedadMax", "Humedad máxima (%)"],
     ] as const) {
-      const item = field(label, "number", String(camera.consigna?.[key] ?? ""));
+      const item = field(label, "number", String((existing ?? camera.consigna)?.[key] ?? ""));
       item.input.step = "any";
       if (key.startsWith("humedad")) {
         item.input.min = "0";
@@ -412,7 +485,7 @@ class CameraCard extends BaseCard {
       values.set(key, item.input);
       form.append(item.wrapper);
     }
-    const reason = field("Motivo", "text", "", false);
+    const reason = field("Motivo", "text", existing?.motivo ?? "", false);
     reason.input.maxLength = 2000;
     form.append(reason.wrapper);
     const submit = button("Guardar", () => {});
@@ -422,15 +495,25 @@ class CameraCard extends BaseCard {
       event.preventDefault();
       const payload = {
         id,
-        revision: 0,
-        zonaHoraria: zone(),
-        vigenteDesde: new Date(start.input.value).toISOString(),
-        vigenteHasta: new Date(end.input.value).toISOString(),
+        revision: existing?.revision ?? 0,
+        zonaHoraria: existing?.zonaHoraria ?? zone(),
+        vigenteDesde:
+          existing && start.input.value === startValue
+            ? existing.vigenteDesde
+            : new Date(start.input.value).toISOString(),
+        vigenteHasta:
+          existing && end.input.value === endValue
+            ? existing.vigenteHasta
+            : new Date(end.input.value).toISOString(),
         motivo: reason.input.value,
         ...Object.fromEntries([...values].map(([key, input]) => [key, Number(input.value)])),
       };
       void this.run(async () => {
-        await this.request("set_manual", { location_id: camera.ubicacionId, payload });
+        await this.request(existing ? "update_manual" : "set_manual", {
+          location_id: camera.ubicacionId,
+          manual_id: id,
+          payload,
+        });
         dialog.close();
         this.snapshot = await this.request<Snapshot>("snapshot");
         this.render();
@@ -504,6 +587,7 @@ class MovementCard extends BaseCard {
     const lot = select("Lote", []);
     const date = field("Fecha", "date", localNow().slice(0, 10));
     const rest = el("div", "", "grid gap-4");
+    const history = el("div", "", "grid gap-3");
     const more = button("Más", () => this.run(() => loadLots(false)));
     const loadLots = async (reset = true) => {
       const sequence = ++this.sequence;
@@ -523,22 +607,29 @@ class MovementCard extends BaseCard {
       lot.input.value = selected;
       more.hidden = this.lots.length >= result.total;
     };
-    const loadOptions = () =>
-      this.run(async () => {
-        rest.replaceChildren();
-        this.options = undefined;
-        if (!lot.input.value || !date.input.value) return;
-        this.options = await this.request<Options>("movement_options", {
+    const loadSelected = async () => {
+      rest.replaceChildren();
+      history.replaceChildren();
+      this.options = undefined;
+      if (!lot.input.value || !date.input.value) return;
+      const [options, movements] = await Promise.all([
+        this.request<Options>("movement_options", {
           lot_id: lot.input.value,
           date: date.input.value,
-        });
-        this.renderMovement(rest);
-      });
+        }),
+        this.request<History>("movements", { lot_id: lot.input.value }),
+      ]);
+      this.options = options;
+      this.renderMovement(rest, options, undefined, loadSelected);
+      this.renderHistory(history, movements, loadSelected);
+    };
+    const loadOptions = () => this.run(loadSelected);
     search.input.oninput = () => {
       clearTimeout(this.searchTimer);
       this.searchTimer = setTimeout(() => {
         void this.run(async () => {
           rest.replaceChildren();
+          history.replaceChildren();
           lot.input.value = "";
           this.options = undefined;
           await loadLots();
@@ -547,65 +638,148 @@ class MovementCard extends BaseCard {
     };
     lot.input.onchange = () => void loadOptions();
     date.input.onchange = () => void loadOptions();
-    this.body.append(search.wrapper, lot.wrapper, more, date.wrapper, rest);
+    this.body.append(search.wrapper, lot.wrapper, more, date.wrapper, rest, history);
     await loadLots();
   }
-  private renderMovement(container: HTMLElement) {
-    const options = this.options!;
+  private renderHistory(container: HTMLElement, history: History, reload: () => Promise<void>) {
+    const details = el("details");
+    details.append(el("summary", `Movimientos (${history.movimientos.length})`, "cursor-pointer"));
+    const list = el("div", "", "mt-3 grid gap-3");
+    const ordered = [...history.movimientos].reverse();
+    const name = (id: string | null) =>
+      this.snapshot?.ubicaciones.find((l) => l.id === id)?.nombre ?? "Entrada";
+    let count = 0;
+    const more = button("Más", () => append());
+    const append = () => {
+      for (const movement of ordered.slice(count, count + 10)) {
+        const row = el("div", "", "grid gap-2 border-t border-solid border-ha-border pt-3");
+        row.append(
+          el(
+            "p",
+            `${movement.fecha} · #${movement.orden}${movement.corregidoEn ? " · Corregido" : ""}`,
+            "text-sm text-ha-secondary",
+          ),
+        );
+        for (const destination of movement.destinos)
+          row.append(
+            el(
+              "p",
+              `${name(movement.ubicacionOrigenId)} → ${name(destination.ubicacionId)} · ${destination.cantidad} ud`,
+            ),
+          );
+        if (movement.orden !== 0)
+          row.append(
+            button("Corregir", () =>
+              this.run(() => this.editMovement(history.lote.id, movement.id, reload)),
+            ),
+          );
+        list.append(row);
+      }
+      count += 10;
+      more.hidden = count >= ordered.length;
+    };
+    append();
+    details.append(list, more);
+    container.append(details);
+  }
+  private async editMovement(lotId: string, movementId: string, reload: () => Promise<void>) {
+    const history = await this.request<History>("movements", { lot_id: lotId });
+    const movement = history.movimientos.find((m) => m.id === movementId);
+    if (!movement || movement.orden === 0) throw new Error("Movimiento no disponible.");
+    const { dialog, form } = this.dialog("Corregir movimiento");
+    // The movement editor owns its form; avoid nesting forms in the dialog.
+    const content = el("div", "", "grid gap-4");
+    form.replaceWith(content);
+    const date = field("Fecha", "date", movement.fecha);
+    const fields = el("div", "", "grid gap-4");
+    content.append(date.wrapper, fields);
+    const load = async () => {
+      fields.replaceChildren();
+      if (!date.input.value) return;
+      const options = await this.request<Options>("movement_options", {
+        lot_id: lotId,
+        date: date.input.value,
+        movement_id: movementId,
+      });
+      // Never combine a fresh stock revision with an older edit draft.
+      if (options.lote.revision !== history.lote.revision)
+        throw new Error("El lote ha cambiado. Cierra y vuelve a corregir.");
+      this.renderMovement(fields, options, movement, async () => {
+        dialog.close();
+        await reload();
+      });
+    };
+    date.input.onchange = () => void this.run(load);
+    try {
+      await load();
+      dialog.showModal();
+    } catch (error) {
+      dialog.remove();
+      throw error;
+    }
+  }
+  private renderMovement(
+    container: HTMLElement,
+    options: Options,
+    editing?: Movement,
+    saved?: () => Promise<void>,
+  ) {
     const name = (id: string) => this.snapshot?.ubicaciones.find((l) => l.id === id)?.nombre ?? id;
     const sourceIds = [...new Set(options.porciones.map((p) => p.ubicacionId))];
     if (!sourceIds.length) {
-      container.append(
-        el("p", "Sin existencias."),
-      );
+      container.append(el("p", "Sin existencias."));
       return;
     }
     const source = select(
       "Origen",
       sourceIds.map((id) => ({ value: id, label: name(id) })),
+      editing?.ubicacionOrigenId ?? "",
     );
     const content = el("div", "", "grid gap-4");
     container.append(source.wrapper, content);
-    source.input.onchange = () => {
+    const renderSource = () => {
       content.replaceChildren();
       if (!source.input.value) return;
       const portions = options.porciones.filter((p) => p.ubicacionId === source.input.value);
       const available = portions.reduce((sum, p) => sum + p.restante, 0);
+      const seed = editing?.ubicacionOrigenId === source.input.value ? editing : undefined;
       const mode = select(
         "Tipo",
         [
           { value: "full", label: "Completo" },
           { value: "split", label: "Parcial / reparto" },
         ],
-        "full",
+        seed ? "split" : "full",
       );
       const form = el("form", "", "grid gap-4");
       const rows = el("div", "", "grid gap-4");
       const summary = el("p");
       const mixing = field("Mezcla física", "checkbox", "", false);
+      mixing.input.checked = seed?.mezclarOrigen ?? false;
       const destinations: {
         node: HTMLElement;
         location: HTMLSelectElement;
         amount: HTMLInputElement;
         sources: Map<string, HTMLInputElement>;
       }[] = [];
-      const id = crypto.randomUUID();
+      const id = editing?.id ?? crypto.randomUUID();
       const updateSummary = () => {
         const total = destinations.reduce((sum, d) => sum + Number(d.amount.value), 0);
         summary.textContent = `Salida: ${total} ud · Restante: ${available - total} ud`;
       };
-      const add = () => {
+      const add = (initial?: Destination) => {
         const node = el("div", "", "grid min-w-0 gap-3 border border-solid border-ha-border p-3");
         const target = select(
           "Destino",
           (this.snapshot?.ubicaciones ?? [])
             .filter((l) => l.id !== source.input.value)
             .map((l) => ({ value: l.id, label: l.nombre })),
+          initial?.ubicacionId,
         );
         const amount = field(
           "Cantidad",
           "number",
-          mode.input.value === "full" ? String(available) : "",
+          initial ? String(initial.cantidad) : mode.input.value === "full" ? String(available) : "",
         );
         amount.input.min = "1";
         amount.input.max = String(available);
@@ -614,18 +788,21 @@ class MovementCard extends BaseCard {
         const sources = new Map<string, HTMLInputElement>();
         node.append(target.wrapper, amount.wrapper);
         if (mode.input.value === "split" && !mixing.input.checked) {
-          node.append(
-            el(
-              "p",
-              "Procedencia",
-              "text-sm text-ha-secondary",
-            ),
-          );
+          node.append(el("p", "Procedencia", "text-sm text-ha-secondary"));
           for (const portion of portions) {
             const f = field(
               `#${portion.orden} · ${portion.fecha} · ${portion.precision} · ${portion.restante} ud`,
               "number",
-              "0",
+              String(
+                initial?.procedencias?.find((p) => p.porcionId === portion.id)?.cantidad ??
+                  (initial && !initial.procedencias?.length
+                    ? portions.length === 1
+                      ? initial.cantidad
+                      : initial.cantidad === available
+                        ? portion.restante
+                        : 0
+                    : 0),
+              ),
             );
             f.input.min = "0";
             f.input.max = String(portion.restante);
@@ -648,7 +825,7 @@ class MovementCard extends BaseCard {
         rows.append(node);
         updateSummary();
       };
-      const addButton = button("Añadir destino", add);
+      const addButton = button("Añadir destino", () => add());
       addButton.hidden = true;
       const reset = () => {
         destinations.length = 0;
@@ -659,11 +836,14 @@ class MovementCard extends BaseCard {
       };
       mode.input.onchange = reset;
       mixing.input.onchange = reset;
-      const submit = button("Registrar", () => {});
+      const submit = button(editing ? "Guardar" : "Registrar", () => {});
       submit.type = "submit";
       form.append(mode.wrapper, mixing.wrapper, rows, addButton, summary, submit);
       content.append(form);
-      reset();
+      if (seed) {
+        addButton.hidden = false;
+        for (const destination of seed.destinos) add(destination);
+      } else reset();
       form.onsubmit = (event) => {
         event.preventDefault();
         const payload = {
@@ -685,17 +865,21 @@ class MovementCard extends BaseCard {
           })),
         };
         void this.run(async () => {
-          await this.request("register_movement", { lot_id: options.lote.id, payload });
-          container.replaceChildren(
-            el(
-              "p",
-              "Registrado",
-              "font-semibold",
-            ),
-          );
+          await this.request(editing ? "update_movement" : "register_movement", {
+            lot_id: options.lote.id,
+            movement_id: editing?.id,
+            payload,
+          });
+          if (saved) {
+            await saved();
+            return;
+          }
+          container.replaceChildren(el("p", "Registrado", "font-semibold"));
         });
       };
     };
+    source.input.onchange = renderSource;
+    if (editing) renderSource();
   }
 }
 
