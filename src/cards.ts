@@ -166,6 +166,10 @@ abstract class BaseCard extends HTMLElement {
   constructor() {
     super();
     this.attachShadow({ mode: "open" });
+    this.shadowRoot!.addEventListener("keydown", (event) => {
+      if (event.target instanceof HTMLInputElement || event.target instanceof HTMLSelectElement)
+        event.stopPropagation();
+    });
   }
   setConfig(config: Config) {
     this.config = { ...config };
@@ -296,7 +300,10 @@ abstract class BaseCard extends HTMLElement {
       "",
       "fixed inset-0 m-auto w-[min(36rem,95vw)] max-h-[90vh] overflow-y-auto border border-solid border-ha-control-border bg-ha-surface p-5 text-ha-text backdrop:bg-black/70",
     );
-    dialog.append(el("h3", title, "mb-4 text-xl font-semibold"));
+    const heading = el("h3", title, "mb-4 text-xl font-semibold");
+    heading.id = `dialog-${crypto.randomUUID()}`;
+    dialog.setAttribute("aria-labelledby", heading.id);
+    dialog.append(heading);
     const form = el("form", "", "grid gap-4");
     dialog.append(
       form,
@@ -376,7 +383,12 @@ class CameraCard extends BaseCard {
     if (camera.origen === "automatica_confirmada")
       this.body.append(el("p", "Automática", "text-sm text-ha-secondary"));
     if (camera.manualHasta)
-      this.body.append(el("p", `Manual hasta ${new Date(camera.manualHasta).toLocaleString()}`));
+      this.body.append(
+        el(
+          "p",
+          `Manual hasta ${new Date(camera.manualHasta).toLocaleString(this.ha?.locale?.language, { dateStyle: "short", timeStyle: "short" })}`,
+        ),
+      );
     if (camera.pendiente) {
       this.body.append(
         el(

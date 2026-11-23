@@ -8,7 +8,7 @@ de las tarjetas se mantienen exclusivamente en este repositorio independiente:
 Tres tarjetas independientes para Home Assistant: **Cámara**, **Nuevo lote** y
 **Nuevo movimiento**. Un único complemento frontend, instalado y actualizado con HACS.
 Requiere la integración [Registros Cámaras](https://github.com/Siroguh/registros_camaras_home_assistant)
-**0.3.0 o posterior**, una conexión configurada y un usuario administrador de HA.
+**0.3.1 o posterior**, una conexión configurada y un usuario administrador de HA.
 
 ## Instalación desde la interfaz
 

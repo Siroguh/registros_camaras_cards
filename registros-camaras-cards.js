@@ -62,7 +62,9 @@ var f = class extends HTMLElement {
 	rendered = !1;
 	generation = 0;
 	constructor() {
-		super(), this.attachShadow({ mode: "open" });
+		super(), this.attachShadow({ mode: "open" }), this.shadowRoot.addEventListener("keydown", (e) => {
+			(e.target instanceof HTMLInputElement || e.target instanceof HTMLSelectElement) && e.stopPropagation();
+		});
 	}
 	setConfig(e) {
 		this.config = { ...e }, this.initialized = !1, this.snapshot = void 0, this.rendered = !1, this.generation++, this.mount(), this.start();
@@ -130,16 +132,16 @@ var f = class extends HTMLElement {
 	refreshed() {}
 	updateMeasurements() {}
 	dialog(e) {
-		let t = this.shadowRoot.activeElement, n = a("dialog", "", "fixed inset-0 m-auto w-[min(36rem,95vw)] max-h-[90vh] overflow-y-auto border border-solid border-ha-control-border bg-ha-surface p-5 text-ha-text backdrop:bg-black/70");
-		n.append(a("h3", e, "mb-4 text-xl font-semibold"));
-		let r = a("form", "", "grid gap-4");
-		return n.append(r, l(), o("Cerrar", () => n.close())), n.addEventListener("cancel", (e) => {
+		let t = this.shadowRoot.activeElement, n = a("dialog", "", "fixed inset-0 m-auto w-[min(36rem,95vw)] max-h-[90vh] overflow-y-auto border border-solid border-ha-control-border bg-ha-surface p-5 text-ha-text backdrop:bg-black/70"), r = a("h3", e, "mb-4 text-xl font-semibold");
+		r.id = `dialog-${crypto.randomUUID()}`, n.setAttribute("aria-labelledby", r.id), n.append(r);
+		let i = a("form", "", "grid gap-4");
+		return n.append(i, l(), o("Cerrar", () => n.close())), n.addEventListener("cancel", (e) => {
 			this.busy && e.preventDefault();
 		}), n.onclose = () => {
 			n.remove(), t?.focus();
 		}, this.shadowRoot.append(n), {
 			dialog: n,
-			form: r
+			form: i
 		};
 	}
 }, p = class extends f {
@@ -180,7 +182,10 @@ var f = class extends HTMLElement {
 			let r = a("div"), i = a("p", "", "text-lg");
 			i.dataset.measurement = e, r.append(a("p", n, "text-sm text-ha-secondary"), i), t.append(r);
 		}
-		if (this.body.append(t, a("p", e.consigna ? `Consigna: ${i(e.consigna)}` : "Sin consigna")), e.origen === "automatica_confirmada" && this.body.append(a("p", "Automática", "text-sm text-ha-secondary")), e.manualHasta && this.body.append(a("p", `Manual hasta ${new Date(e.manualHasta).toLocaleString()}`)), e.pendiente && (this.body.append(a("p", `Pendiente: ${i(e.pendiente.propuesta)}`, "border-t border-solid border-ha-border pt-3")), this.body.append(o("Revisar", () => this.confirm(e)))), e.manualHasta) {
+		if (this.body.append(t, a("p", e.consigna ? `Consigna: ${i(e.consigna)}` : "Sin consigna")), e.origen === "automatica_confirmada" && this.body.append(a("p", "Automática", "text-sm text-ha-secondary")), e.manualHasta && this.body.append(a("p", `Manual hasta ${new Date(e.manualHasta).toLocaleString(this.ha?.locale?.language, {
+			dateStyle: "short",
+			timeStyle: "short"
+		})}`)), e.pendiente && (this.body.append(a("p", `Pendiente: ${i(e.pendiente.propuesta)}`, "border-t border-solid border-ha-border pt-3")), this.body.append(o("Revisar", () => this.confirm(e)))), e.manualHasta) {
 			let t = a("div", "", "flex flex-wrap gap-2");
 			t.append(o("Editar manual", () => this.run(async () => this.manual(e, await this.currentManual(e)))), o("Finalizar manual", () => this.run(async () => this.finishManual(e, await this.currentManual(e))))), this.body.append(t);
 		} else this.body.append(o("Consigna manual", () => this.manual(e)));
