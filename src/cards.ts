@@ -178,7 +178,7 @@ abstract class BaseCard extends HTMLElement {
   private activity = 0;
   private readonly viewportChanged = () => {
     cancelAnimationFrame(this.layoutFrame);
-    this.layoutFrame = requestAnimationFrame(() => this.layout());
+    this.layoutFrame = requestAnimationFrame(() => this.updateViewportLayout());
   };
   protected snapshot?: Snapshot;
   protected busy = false;
@@ -336,7 +336,7 @@ abstract class BaseCard extends HTMLElement {
     }
     return null;
   }
-  private layout() {
+  private updateViewportLayout() {
     if (!this.isConnected) return;
     const viewport = window.visualViewport;
     const height = viewport?.height ?? window.innerHeight;

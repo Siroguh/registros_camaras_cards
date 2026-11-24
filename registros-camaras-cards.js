@@ -71,7 +71,7 @@ var p = class extends HTMLElement {
 	refreshing = !1;
 	activity = 0;
 	viewportChanged = () => {
-		cancelAnimationFrame(this.layoutFrame), this.layoutFrame = requestAnimationFrame(() => this.layout());
+		cancelAnimationFrame(this.layoutFrame), this.layoutFrame = requestAnimationFrame(() => this.updateViewportLayout());
 	};
 	snapshot;
 	busy = !1;
@@ -138,7 +138,7 @@ var p = class extends HTMLElement {
 		}
 		return null;
 	}
-	layout() {
+	updateViewportLayout() {
 		if (!this.isConnected) return;
 		let e = window.visualViewport, t = e?.height ?? window.innerHeight, n = e?.offsetTop ?? 0, r = this.popup();
 		r !== this.popupHost && (this.popupHost?.removeEventListener("transitionend", this.viewportChanged), this.popupHost = r, r?.addEventListener("transitionend", this.viewportChanged)), r && (r.style.setProperty("--rc-viewport-height", `${t}px`), r.style.setProperty("--rc-viewport-top", `${n}px`));
