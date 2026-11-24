@@ -147,6 +147,16 @@ function styleRoot(root: ShadowRoot) {
   root.replaceChildren(style);
 }
 
+function revealField(element: HTMLElement) {
+  const body = element.closest<HTMLElement>("[data-scroll-body]");
+  if (!body) return;
+  const bounds = body.getBoundingClientRect();
+  const field = element.getBoundingClientRect();
+  if (field.top < bounds.top || field.height > bounds.height)
+    body.scrollTop += field.top - bounds.top - 8;
+  else if (field.bottom > bounds.bottom) body.scrollTop += field.bottom - bounds.bottom + 8;
+}
+
 function syncTheme(host: HTMLElement, hass: Hass) {
   // Native date pickers, selects and checkboxes must follow HA, not the OS theme.
   host.style.colorScheme = hass.themes ? (hass.themes.darkMode ? "dark" : "light") : "inherit";
@@ -157,6 +167,19 @@ abstract class BaseCard extends HTMLElement {
   protected ha?: Hass;
   protected body = el("div");
   protected heading = el("h2");
+  protected readings = el("div");
+  protected actions = el("div");
+  private panel = el("div");
+  private layoutObserver?: ResizeObserver;
+  private popupHost: HTMLElement | null = null;
+  private layoutFrame = 0;
+  private actionOrigin: HTMLElement | null = null;
+  private refreshing = false;
+  private activity = 0;
+  private readonly viewportChanged = () => {
+    cancelAnimationFrame(this.layoutFrame);
+    this.layoutFrame = requestAnimationFrame(() => this.layout());
+  };
   protected snapshot?: Snapshot;
   protected busy = false;
   private timer?: ReturnType<typeof setInterval>;
@@ -169,6 +192,37 @@ abstract class BaseCard extends HTMLElement {
     this.shadowRoot!.addEventListener("keydown", (event) => {
       if (event.target instanceof HTMLInputElement || event.target instanceof HTMLSelectElement)
         event.stopPropagation();
+    });
+    this.shadowRoot!.addEventListener("focusin", this.viewportChanged);
+    this.shadowRoot!.addEventListener(
+      "invalid",
+      (event) => {
+        event.preventDefault();
+        const target = event.target as HTMLInputElement;
+        const input = target.form?.querySelector<HTMLElement>(":invalid") ?? target;
+        const error =
+          target.parentElement?.querySelector<HTMLElement>("[data-field-error]") ??
+          el("span", "", "text-sm text-ha-text");
+        error.dataset.fieldError = "";
+        error.id ||= `error-${crypto.randomUUID()}`;
+        error.textContent = target.validationMessage;
+        target.parentElement?.append(error);
+        target.setAttribute("aria-describedby", error.id);
+        target.setAttribute("aria-invalid", "true");
+        this.message("Revisa los campos marcados.");
+        requestAnimationFrame(() => {
+          input.focus({ preventScroll: true });
+          revealField(input);
+        });
+      },
+      true,
+    );
+    this.shadowRoot!.addEventListener("input", (event) => {
+      const target = event.target as HTMLInputElement;
+      if (!target.matches("input,select")) return;
+      target.removeAttribute("aria-invalid");
+      target.removeAttribute("aria-describedby");
+      target.parentElement?.querySelector("[data-field-error]")?.remove();
     });
   }
   setConfig(config: Config) {
@@ -187,12 +241,25 @@ abstract class BaseCard extends HTMLElement {
     this.updateMeasurements();
   }
   connectedCallback() {
-    this.initialized = false;
+    window.addEventListener("resize", this.viewportChanged);
+    window.visualViewport?.addEventListener("resize", this.viewportChanged);
+    window.visualViewport?.addEventListener("scroll", this.viewportChanged);
+    this.layoutObserver ??= new ResizeObserver(this.viewportChanged);
+    this.layoutObserver.observe(this);
     this.start();
+    this.watch();
+    this.viewportChanged();
   }
   disconnectedCallback() {
     clearInterval(this.timer);
     this.timer = undefined;
+    window.removeEventListener("resize", this.viewportChanged);
+    window.visualViewport?.removeEventListener("resize", this.viewportChanged);
+    window.visualViewport?.removeEventListener("scroll", this.viewportChanged);
+    this.layoutObserver?.disconnect();
+    this.popupHost?.removeEventListener("transitionend", this.viewportChanged);
+    this.popupHost = null;
+    cancelAnimationFrame(this.layoutFrame);
   }
   getCardSize() {
     return 5;
@@ -206,24 +273,114 @@ abstract class BaseCard extends HTMLElement {
     const card = el(
       "ha-card" as "div",
       "",
-      "block [--ha-card-border-radius:0px] [--ha-card-border-width:0px]",
+      "block min-h-0 [--ha-card-border-radius:0px] [--ha-card-border-width:0px]",
     );
     const panel = el(
       "div",
       "",
-      "bg-ha-surface text-ha-text border border-solid border-ha-control-border p-4",
+      "flex min-h-0 max-h-[var(--rc-card-height,calc(100dvh-6rem))] flex-col overflow-hidden bg-ha-surface text-ha-text border border-solid border-ha-control-border",
     );
-    this.heading = el("h2", this.config.title || this.defaultTitle(), "mb-4 text-xl font-semibold");
-    this.body = el("div", "", "grid gap-4");
-    panel.append(this.heading, this.body, status());
+    this.panel = panel;
+    this.heading = el("h2", this.config.title || this.defaultTitle(), "text-xl font-semibold");
+    this.readings = el("div", "", "empty:hidden");
+    const header = el(
+      "header",
+      "",
+      "grid shrink-0 gap-3 border-b border-solid border-ha-border bg-ha-surface p-4 [&:not(:has(:not([hidden])))]:hidden",
+    );
+    header.append(this.heading, this.readings);
+    this.body = this.scrollBody();
+    this.body.setAttribute("role", "region");
+    this.heading.id = `card-${crypto.randomUUID()}`;
+    this.body.setAttribute("aria-labelledby", this.heading.id);
+    this.actions = el("div", "", "flex flex-wrap justify-end gap-2 empty:hidden");
+    panel.append(header, this.body, this.footer(this.actions));
     card.append(panel);
     root.append(card);
+    this.viewportChanged();
+  }
+  private scrollBody() {
+    const body = el(
+      "div",
+      "",
+      "grid min-h-0 content-start gap-4 overflow-y-auto overscroll-contain touch-pan-y p-4 [scrollbar-gutter:stable] [scrollbar-width:thin] [overflow-anchor:none]",
+    );
+    body.dataset.scrollBody = "";
+    body.tabIndex = 0;
+    return body;
+  }
+  private footer(actions: HTMLElement, cancel?: HTMLButtonElement) {
+    const footer = el(
+      "footer",
+      "",
+      "grid shrink-0 gap-2 border-t border-solid border-ha-border bg-ha-surface p-3 [padding-bottom:max(0.75rem,env(safe-area-inset-bottom))] [&:not(:has(button)):not(:has(output:not(:empty)))]:hidden",
+    );
+    const row = el("div", "", "flex flex-wrap items-center justify-end gap-2");
+    if (cancel) row.append(cancel);
+    row.append(actions);
+    footer.append(status(), row);
+    return footer;
+  }
+  protected dockSubmit(form: HTMLFormElement, submit: HTMLButtonElement) {
+    form.id ||= `form-${crypto.randomUUID()}`;
+    submit.setAttribute("form", form.id);
+    const actions =
+      form.closest("dialog")?.querySelector<HTMLElement>("[data-dialog-actions]") ?? this.actions;
+    actions.replaceChildren(submit);
+  }
+  private popup() {
+    let node: HTMLElement | null = this;
+    while (node) {
+      if (node.classList.contains("bubble-pop-up")) return node;
+      node = node.parentElement ?? ((node.getRootNode() as ShadowRoot).host as HTMLElement | null);
+    }
+    return null;
+  }
+  private layout() {
+    if (!this.isConnected) return;
+    const viewport = window.visualViewport;
+    const height = viewport?.height ?? window.innerHeight;
+    const top = viewport?.offsetTop ?? 0;
+    const popup = this.popup();
+    if (popup !== this.popupHost) {
+      this.popupHost?.removeEventListener("transitionend", this.viewportChanged);
+      this.popupHost = popup;
+      popup?.addEventListener("transitionend", this.viewportChanged);
+    }
+    if (popup) {
+      popup.style.setProperty("--rc-viewport-height", `${height}px`);
+      popup.style.setProperty("--rc-viewport-top", `${top}px`);
+    }
+    const available = popup
+      ? top + height - this.panel.getBoundingClientRect().top - 24
+      : height - 96;
+    this.style.setProperty("--rc-card-height", `${Math.max(120, available)}px`);
+    this.style.setProperty("--rc-dialog-height", `${Math.max(120, height - 24)}px`);
+    this.style.setProperty("--rc-dialog-center", `${top + height / 2}px`);
+    // The configured Bubble header supplies the same title and close action.
+    this.heading.hidden = Boolean(popup);
+    this.readings.hidden = !this.readings.childElementCount;
+    const focused = this.shadowRoot!.activeElement as HTMLElement | null;
+    if (focused?.matches("input,select,textarea")) revealField(focused);
+  }
+  private watch() {
+    if (this.timer) return;
+    this.timer = setInterval(() => {
+      if (
+        !this.busy &&
+        this.isConnected &&
+        !document.hidden &&
+        !this.shadowRoot!.querySelector("dialog[open]")
+      )
+        void this.refresh(true);
+    }, 60_000);
   }
   private start() {
     if (!this.isConnected || !this.ha || this.initialized || this.busy) return;
     this.initialized = true;
     this.mount();
     clearInterval(this.timer);
+    this.timer = undefined;
     if (!this.config.entry_id) {
       this.message("Conexión sin configurar.");
       return;
@@ -233,9 +390,7 @@ abstract class BaseCard extends HTMLElement {
       await this.render();
       this.rendered = true;
     });
-    this.timer = setInterval(() => {
-      if (!this.busy && this.isConnected && !document.hidden) void this.refresh();
-    }, 60_000);
+    this.watch();
   }
   protected async request<T>(operation: string, data: Record<string, unknown> = {}): Promise<T> {
     if (!this.ha || !this.config.entry_id) throw new Error("Conexión sin configurar.");
@@ -251,13 +406,19 @@ abstract class BaseCard extends HTMLElement {
     return result;
   }
   protected message(text: string) {
-    this.shadowRoot!.querySelectorAll<HTMLOutputElement>("[data-status]").forEach(
-      (n) => (n.textContent = text),
-    );
+    const scope = text
+      ? (this.shadowRoot!.querySelector("dialog[open]") ?? this.panel)
+      : this.shadowRoot!;
+    scope
+      .querySelectorAll<HTMLOutputElement>("[data-status]")
+      .forEach((n) => (n.textContent = text));
   }
   protected async run(work: () => Promise<void>) {
     if (this.busy) return;
     this.busy = true;
+    this.activity++;
+    const focused = this.shadowRoot!.activeElement as HTMLElement | null;
+    this.actionOrigin = focused;
     this.message("Procesando…");
     const previous = [
       ...this.shadowRoot!.querySelectorAll<
@@ -276,11 +437,46 @@ abstract class BaseCard extends HTMLElement {
       );
     } finally {
       this.busy = false;
+      this.actionOrigin = null;
       previous.forEach(([n, disabled]) => (n.disabled = disabled));
+      if (focused?.isConnected && !this.shadowRoot!.querySelector("dialog[open]"))
+        focused.focus({ preventScroll: true });
+      this.viewportChanged();
       if (!this.initialized) this.start();
     }
   }
-  protected async refresh() {
+  protected async refresh(quiet = false) {
+    if (quiet && this.rendered) {
+      if (this.refreshing) return;
+      this.refreshing = true;
+      const generation = this.generation;
+      const activity = this.activity;
+      try {
+        const snapshot = await this.request<Snapshot>("snapshot");
+        if (
+          !this.busy &&
+          this.isConnected &&
+          generation === this.generation &&
+          activity === this.activity &&
+          !this.shadowRoot!.querySelector("dialog[open]")
+        ) {
+          this.snapshot = snapshot;
+          this.refreshed();
+          this.viewportChanged();
+        }
+      } catch (error) {
+        if (
+          !this.busy &&
+          generation === this.generation &&
+          activity === this.activity &&
+          !this.shadowRoot!.querySelector("dialog[open]")
+        )
+          this.message(String((error as Error).message ?? error));
+      } finally {
+        this.refreshing = false;
+      }
+      return;
+    }
     await this.run(async () => {
       this.snapshot = await this.request<Snapshot>("snapshot");
       if (!this.rendered) {
@@ -294,35 +490,49 @@ abstract class BaseCard extends HTMLElement {
   protected abstract defaultTitle(): string;
   protected abstract render(): void | Promise<void>;
   protected dialog(title: string) {
-    const origin = this.shadowRoot!.activeElement as HTMLElement | null;
+    const origin = (this.shadowRoot!.activeElement as HTMLElement | null) ?? this.actionOrigin;
     const dialog = el(
       "dialog",
       "",
-      "fixed inset-0 m-auto w-[min(36rem,95vw)] max-h-[90vh] overflow-y-auto border border-solid border-ha-control-border bg-ha-surface p-5 text-ha-text backdrop:bg-black/70",
+      "fixed inset-x-0 bottom-auto top-[var(--rc-dialog-center,50dvh)] m-0 mx-auto w-[min(36rem,calc(100vw-1.5rem))] max-h-[var(--rc-dialog-height,calc(100dvh-1.5rem))] [transform:translateY(-50%)] overflow-hidden border border-solid border-ha-control-border bg-ha-surface p-0 text-ha-text open:flex open:flex-col backdrop:bg-black/70",
     );
-    const heading = el("h3", title, "mb-4 text-xl font-semibold");
+    const heading = el(
+      "h3",
+      title,
+      "shrink-0 border-b border-solid border-ha-border bg-ha-surface p-4 text-xl font-semibold",
+    );
     heading.id = `dialog-${crypto.randomUUID()}`;
     dialog.setAttribute("aria-labelledby", heading.id);
     dialog.append(heading);
     const form = el("form", "", "grid gap-4");
+    const body = this.scrollBody();
+    body.setAttribute("role", "region");
+    body.setAttribute("aria-labelledby", heading.id);
+    body.append(form);
+    const actions = el("div", "", "flex flex-wrap gap-2");
+    actions.dataset.dialogActions = "";
     dialog.append(
-      form,
-      status(),
-      button("Cerrar", () => dialog.close()),
+      body,
+      this.footer(
+        actions,
+        button("Cancelar", () => dialog.close()),
+      ),
     );
     dialog.addEventListener("cancel", (event) => {
       if (this.busy) event.preventDefault();
     });
     dialog.onclose = () => {
       dialog.remove();
-      origin?.focus();
+      origin?.focus({ preventScroll: true });
     };
     this.shadowRoot!.append(dialog);
+    this.viewportChanged();
     return { dialog, form };
   }
 }
 
 class CameraCard extends BaseCard {
+  private renderedCamera = "";
   static getStubConfig() {
     return { type: "custom:registros-camera-card" };
   }
@@ -333,7 +543,22 @@ class CameraCard extends BaseCard {
     return this.snapshot?.camaras.find((c) => c.ubicacionId === this.config.location_id);
   }
   protected refreshed() {
-    if (!this.shadowRoot!.querySelector("dialog")) this.render();
+    if (
+      this.shadowRoot!.querySelector("dialog") ||
+      JSON.stringify(this.camera()) === this.renderedCamera
+    )
+      return;
+    const scroll = this.body.scrollTop;
+    const expanded = this.body.querySelector("details")?.open;
+    const focused = (this.shadowRoot!.activeElement as HTMLElement | null)?.textContent;
+    this.render();
+    const details = this.body.querySelector("details");
+    if (details) details.open = Boolean(expanded);
+    this.body.scrollTop = scroll;
+    if (focused)
+      [...this.actions.querySelectorAll("button")]
+        .find((b) => b.textContent === focused)
+        ?.focus({ preventScroll: true });
   }
   protected updateMeasurements() {
     const format = new Intl.NumberFormat(this.ha?.locale?.language, {
@@ -359,7 +584,10 @@ class CameraCard extends BaseCard {
   }
   protected render() {
     this.body.replaceChildren();
+    this.actions.replaceChildren();
+    this.readings.replaceChildren();
     const camera = this.camera();
+    this.renderedCamera = JSON.stringify(camera);
     this.heading.textContent = this.config.title || camera?.nombre || this.defaultTitle();
     if (!camera) {
       this.body.append(el("p", "Cámara sin configurar."));
@@ -376,8 +604,9 @@ class CameraCard extends BaseCard {
       block.append(el("p", label, "text-sm text-ha-secondary"), value);
       readings.append(block);
     }
+    this.readings.append(readings);
+    this.readings.hidden = false;
     this.body.append(
-      readings,
       el("p", camera.consigna ? `Consigna: ${ranges(camera.consigna)}` : "Sin consigna"),
     );
     if (camera.origen === "automatica_confirmada")
@@ -397,7 +626,7 @@ class CameraCard extends BaseCard {
           "border-t border-solid border-ha-border pt-3",
         ),
       );
-      this.body.append(button("Revisar", () => this.confirm(camera)));
+      this.actions.append(button("Revisar", () => this.confirm(camera)));
     }
     if (camera.manualHasta) {
       const actions = el("div", "", "flex flex-wrap gap-2");
@@ -409,9 +638,9 @@ class CameraCard extends BaseCard {
           this.run(async () => this.finishManual(camera, await this.currentManual(camera))),
         ),
       );
-      this.body.append(actions);
-    } else this.body.append(button("Consigna manual", () => this.manual(camera)));
-    this.body.append(button("Actualizar", () => this.refresh()));
+      this.actions.append(actions);
+    } else this.actions.append(button("Consigna manual", () => this.manual(camera)));
+    this.actions.append(button("Actualizar", () => this.refresh()));
     const lots = el("details");
     lots.append(el("summary", `Lotes (${camera.lotes.length})`, "cursor-pointer"));
     const list = el("ul", "", "mt-2 grid gap-2");
@@ -429,7 +658,7 @@ class CameraCard extends BaseCard {
     );
     const submit = button("Confirmar", () => {});
     submit.type = "submit";
-    form.append(submit);
+    this.dockSubmit(form, submit);
     form.onsubmit = (event) => {
       event.preventDefault();
       void this.run(async () => {
@@ -457,7 +686,7 @@ class CameraCard extends BaseCard {
     form.append(el("p", ranges(manual)));
     const submit = button("Confirmar", () => {});
     submit.type = "submit";
-    form.append(submit);
+    this.dockSubmit(form, submit);
     form.onsubmit = (event) => {
       event.preventDefault();
       void this.run(async () => {
@@ -502,7 +731,24 @@ class CameraCard extends BaseCard {
     form.append(reason.wrapper);
     const submit = button("Guardar", () => {});
     submit.type = "submit";
-    form.append(submit);
+    this.dockSubmit(form, submit);
+    const validate = () => {
+      end.input.setCustomValidity(
+        end.input.value && start.input.value && end.input.value <= start.input.value
+          ? "El fin debe ser posterior al inicio."
+          : "",
+      );
+      for (const prefix of ["temperatura", "humedad"]) {
+        const min = values.get(`${prefix}Min`)!;
+        const max = values.get(`${prefix}Max`)!;
+        max.setCustomValidity(
+          min.value !== "" && max.value !== "" && Number(max.value) < Number(min.value)
+            ? "El máximo debe ser igual o mayor que el mínimo."
+            : "",
+        );
+      }
+    };
+    form.addEventListener("input", validate);
     form.onsubmit = (event) => {
       event.preventDefault();
       const payload = {
@@ -545,6 +791,7 @@ class LotCard extends BaseCard {
   }
   protected render() {
     this.body.replaceChildren();
+    this.actions.replaceChildren();
     const form = el("form", "", "grid gap-4");
     const code = field("Código del lote");
     code.input.maxLength = 200;
@@ -555,7 +802,7 @@ class LotCard extends BaseCard {
     const start = field("Fecha de inicio", "date", localNow().slice(0, 10));
     const submit = button("Crear", () => {});
     submit.type = "submit";
-    form.append(code.wrapper, quantity.wrapper, start.wrapper, submit);
+    form.append(code.wrapper, quantity.wrapper, start.wrapper);
     form.onsubmit = (event) => {
       event.preventDefault();
       const payload = {
@@ -568,6 +815,7 @@ class LotCard extends BaseCard {
       void this.run(async () => {
         const result = await this.request<{ lote: Lot }>("create_lot", { payload });
         this.requestId = crypto.randomUUID();
+        this.actions.replaceChildren();
         this.body.replaceChildren(
           el("p", `${result.lote.codigo} · Creado`, "font-semibold"),
           button("Nuevo", () => this.render()),
@@ -575,6 +823,7 @@ class LotCard extends BaseCard {
       });
     };
     this.body.append(form);
+    this.dockSubmit(form, submit);
   }
 }
 
@@ -595,6 +844,7 @@ class MovementCard extends BaseCard {
   }
   protected async render() {
     this.body.replaceChildren();
+    this.actions.replaceChildren();
     const search = field("Buscar lote", "search", "", false);
     const lot = select("Lote", []);
     const date = field("Fecha", "date", localNow().slice(0, 10));
@@ -619,9 +869,13 @@ class MovementCard extends BaseCard {
       lot.input.value = selected;
       more.hidden = this.lots.length >= result.total;
     };
-    const loadSelected = async () => {
+    const loadSelected = async (preserve = false) => {
+      const scroll = this.body.scrollTop;
+      const expanded = preserve && Boolean(history.querySelector("details")?.open);
+      const count = preserve ? Number(history.querySelector("details")?.dataset.count ?? 10) : 10;
       rest.replaceChildren();
       history.replaceChildren();
+      this.actions.replaceChildren();
       this.options = undefined;
       if (!lot.input.value || !date.input.value) return;
       const [options, movements] = await Promise.all([
@@ -632,8 +886,11 @@ class MovementCard extends BaseCard {
         this.request<History>("movements", { lot_id: lot.input.value }),
       ]);
       this.options = options;
-      this.renderMovement(rest, options, undefined, loadSelected);
-      this.renderHistory(history, movements, loadSelected);
+      const reload = () => loadSelected(true);
+      this.renderMovement(rest, options, undefined, reload);
+      this.renderHistory(history, movements, reload, count);
+      history.querySelector("details")!.open = expanded;
+      this.body.scrollTop = preserve ? scroll : 0;
     };
     const loadOptions = () => this.run(loadSelected);
     search.input.oninput = () => {
@@ -642,6 +899,7 @@ class MovementCard extends BaseCard {
         void this.run(async () => {
           rest.replaceChildren();
           history.replaceChildren();
+          this.actions.replaceChildren();
           lot.input.value = "";
           this.options = undefined;
           await loadLots();
@@ -653,7 +911,12 @@ class MovementCard extends BaseCard {
     this.body.append(search.wrapper, lot.wrapper, more, date.wrapper, rest, history);
     await loadLots();
   }
-  private renderHistory(container: HTMLElement, history: History, reload: () => Promise<void>) {
+  private renderHistory(
+    container: HTMLElement,
+    history: History,
+    reload: () => Promise<void>,
+    visible = 10,
+  ) {
     const details = el("details");
     details.append(el("summary", `Movimientos (${history.movimientos.length})`, "cursor-pointer"));
     const list = el("div", "", "mt-3 grid gap-3");
@@ -662,8 +925,9 @@ class MovementCard extends BaseCard {
       this.snapshot?.ubicaciones.find((l) => l.id === id)?.nombre ?? "Entrada";
     let count = 0;
     const more = button("Más", () => append());
-    const append = () => {
-      for (const movement of ordered.slice(count, count + 10)) {
+    const append = (size = 10) => {
+      const scroll = this.body.scrollTop;
+      for (const movement of ordered.slice(count, count + size)) {
         const row = el("div", "", "grid gap-2 border-t border-solid border-ha-border pt-3");
         row.append(
           el(
@@ -681,16 +945,21 @@ class MovementCard extends BaseCard {
           );
         if (movement.orden !== 0)
           row.append(
-            button("Corregir", () =>
-              this.run(() => this.editMovement(history.lote.id, movement.id, reload)),
+            Object.assign(
+              button("Corregir", () =>
+                this.run(() => this.editMovement(history.lote.id, movement.id, reload)),
+              ),
+              { id: `movement-${movement.id}` },
             ),
           );
         list.append(row);
       }
-      count += 10;
+      count += size;
+      details.dataset.count = String(count);
       more.hidden = count >= ordered.length;
+      this.body.scrollTop = scroll;
     };
-    append();
+    append(visible);
     details.append(list, more);
     container.append(details);
   }
@@ -707,6 +976,7 @@ class MovementCard extends BaseCard {
     content.append(date.wrapper, fields);
     const load = async () => {
       fields.replaceChildren();
+      dialog.querySelector("[data-dialog-actions]")!.replaceChildren();
       if (!date.input.value) return;
       const options = await this.request<Options>("movement_options", {
         lot_id: lotId,
@@ -719,6 +989,7 @@ class MovementCard extends BaseCard {
       this.renderMovement(fields, options, movement, async () => {
         dialog.close();
         await reload();
+        this.shadowRoot!.getElementById(`movement-${movementId}`)?.focus({ preventScroll: true });
       });
     };
     date.input.onchange = () => void this.run(load);
@@ -751,6 +1022,10 @@ class MovementCard extends BaseCard {
     container.append(source.wrapper, content);
     const renderSource = () => {
       content.replaceChildren();
+      const actions =
+        container.closest("dialog")?.querySelector<HTMLElement>("[data-dialog-actions]") ??
+        this.actions;
+      actions.replaceChildren();
       if (!source.input.value) return;
       const portions = options.porciones.filter((p) => p.ubicacionId === source.input.value);
       const available = portions.reduce((sum, p) => sum + p.restante, 0);
@@ -837,7 +1112,14 @@ class MovementCard extends BaseCard {
         rows.append(node);
         updateSummary();
       };
-      const addButton = button("Añadir destino", () => add());
+      const addButton = button("Añadir destino", () => {
+        const scroll = this.body.scrollTop;
+        add();
+        this.body.scrollTop = scroll;
+        destinations.at(-1)?.location.focus({ preventScroll: true });
+        const destination = destinations.at(-1);
+        if (destination) revealField(destination.node);
+      });
       addButton.hidden = true;
       const reset = () => {
         destinations.length = 0;
@@ -850,8 +1132,9 @@ class MovementCard extends BaseCard {
       mixing.input.onchange = reset;
       const submit = button(editing ? "Guardar" : "Registrar", () => {});
       submit.type = "submit";
-      form.append(mode.wrapper, mixing.wrapper, rows, addButton, summary, submit);
+      form.append(mode.wrapper, mixing.wrapper, rows, addButton, summary);
       content.append(form);
+      this.dockSubmit(form, submit);
       if (seed) {
         addButton.hidden = false;
         for (const destination of seed.destinos) add(destination);

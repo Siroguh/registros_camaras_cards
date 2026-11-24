@@ -37,6 +37,19 @@ visuales usan los colores del tema activo. Los controles nativos de fecha y sele
 también siguen el modo de HA. No necesitas configurar cada tarjeta ni escribir YAML.
 Cambiar de tema conserva los valores que estés introduciendo en los formularios.
 
+### Scroll y formularios largos
+
+Las tarjetas crecen hasta la altura disponible y desplazan únicamente su cuerpo.
+La cabecera, las lecturas de cámara y las acciones permanecen visibles. Los diálogos
+usan la misma estructura, con Cancelar y Guardar/Confirmar al pie. El historial y
+los destinos comparten el scroll del cuerpo; cargar más conserva la posición.
+La altura sigue el viewport visual, incluido el teclado móvil y las zonas seguras.
+
+En pop-ups Bubble, el contenedor exterior debe ceder el scroll a la tarjeta
+(`overflow: hidden`, altura limitada al viewport y contenido flex con `min-height: 0`).
+La cabecera Bubble debe usar el título de la tarjeta: la tarjeta omite su título
+interior en ese contexto. En dashboards normales conserva su propia cabecera.
+
 ### Cámara
 
 Selecciona una cámara y, opcionalmente, sus entidades de temperatura/humedad existentes.

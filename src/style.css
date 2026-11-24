@@ -1,11 +1,19 @@
 @import "tailwindcss" source(none);
 @source "./cards.ts";
 
+:host {
+  @apply block min-h-0;
+}
+
 @theme inline {
   --color-ha-surface: var(--ha-card-background, var(--card-background-color, #ffffff));
   --color-ha-input: var(--input-fill-color, var(--secondary-background-color, #f5f5f5));
   --color-ha-button: var(--secondary-background-color, #f5f5f5);
-  --color-ha-hover: color-mix(in srgb, var(--primary-text-color, #212121) 12%, var(--ha-card-background, var(--card-background-color, #ffffff)));
+  --color-ha-hover: color-mix(
+    in srgb,
+    var(--primary-text-color, #212121) 12%,
+    var(--ha-card-background, var(--card-background-color, #ffffff))
+  );
   --color-ha-text: var(--primary-text-color, #212121);
   --color-ha-secondary: var(--secondary-text-color, #727272);
   --color-ha-border: var(--ha-card-border-color, var(--divider-color, #e0e0e0));
