@@ -355,9 +355,27 @@ abstract class BaseCard extends HTMLElement {
       popup.style.setProperty("--rc-viewport-height", `${height}px`);
       popup.style.setProperty("--rc-viewport-top", `${top}px`);
     }
-    const available = popup
-      ? top + height - this.panel.getBoundingClientRect().top - 24
-      : height - 96;
+    let available = height - 96;
+    if (popup) {
+      // Measure the frame, not the card's current top: a bottom-anchored sheet
+      // changes its top as content grows and must not shrink its own height limit.
+      const frame = getComputedStyle(popup);
+      const container = popup.querySelector<HTMLElement>(".bubble-pop-up-container");
+      const content = container ? getComputedStyle(container) : null;
+      const px = (value?: string) => Number.parseFloat(value ?? "") || 0;
+      const header = popup.querySelector<HTMLElement>(".bubble-header-container");
+      const limit = px(frame.maxHeight) || height - 32;
+      available =
+        Math.min(height, limit) -
+        (header?.offsetHeight ?? 0) -
+        px(frame.paddingTop) -
+        px(frame.paddingBottom) -
+        px(frame.borderTopWidth) -
+        px(frame.borderBottomWidth) -
+        px(frame.rowGap) -
+        px(content?.paddingTop) -
+        px(content?.paddingBottom);
+    }
     this.style.setProperty("--rc-card-height", `${Math.max(120, available)}px`);
     this.style.setProperty("--rc-dialog-height", `${Math.max(120, height - 24)}px`);
     this.style.setProperty("--rc-dialog-center", `${top + height / 2}px`);
