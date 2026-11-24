@@ -44,6 +44,8 @@ La cabecera, las lecturas de cámara y las acciones permanecen visibles. Los di�
 usan la misma estructura, con Cancelar y Guardar/Confirmar al pie. El historial y
 los destinos comparten el scroll del cuerpo; cargar más conserva la posición.
 La altura sigue el viewport visual, incluido el teclado móvil y las zonas seguras.
+Los gestos táctiles del cuerpo quedan aislados del gesto de cierre de Bubble;
+el navegador conserva el desplazamiento nativo y la cabecera mantiene su cierre.
 
 En pop-ups Bubble, el contenedor exterior debe ceder el scroll a la tarjeta
 (`overflow: hidden`, altura limitada al viewport y contenido flex con `min-height: 0`).

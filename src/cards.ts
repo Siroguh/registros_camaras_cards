@@ -307,6 +307,10 @@ abstract class BaseCard extends HTMLElement {
     );
     body.dataset.scrollBody = "";
     body.tabIndex = 0;
+    // Bubble's swipe-to-close handler also receives gestures from nested cards.
+    // Keep native scrolling inside this region without cancelling its default action.
+    for (const type of ["touchstart", "touchmove", "touchend", "touchcancel"])
+      body.addEventListener(type, (event) => event.stopPropagation(), { passive: true });
     return body;
   }
   private footer(actions: HTMLElement, cancel?: HTMLButtonElement) {

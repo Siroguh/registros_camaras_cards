@@ -121,7 +121,14 @@ var p = class extends HTMLElement {
 	}
 	scrollBody() {
 		let e = a("div", "", "grid min-h-0 content-start gap-4 overflow-y-auto overscroll-contain touch-pan-y p-4 [scrollbar-gutter:stable] [scrollbar-width:thin] [overflow-anchor:none]");
-		return e.dataset.scrollBody = "", e.tabIndex = 0, e;
+		e.dataset.scrollBody = "", e.tabIndex = 0;
+		for (let t of [
+			"touchstart",
+			"touchmove",
+			"touchend",
+			"touchcancel"
+		]) e.addEventListener(t, (e) => e.stopPropagation(), { passive: !0 });
+		return e;
 	}
 	footer(e, t) {
 		let n = a("footer", "", "grid shrink-0 gap-2 border-t border-solid border-ha-border bg-ha-surface p-3 [padding-bottom:max(0.75rem,env(safe-area-inset-bottom))] [&:not(:has(button)):not(:has(output:not(:empty)))]:hidden"), r = a("div", "", "flex flex-wrap items-center justify-end gap-2");
