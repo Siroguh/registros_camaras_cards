@@ -2,15 +2,20 @@
 
 ## Comprobaciones
 
-`pnpm install` instala Husky y Gitleaks 8.30.1, con descarga verificada por SHA-256
-para Linux x86_64/aarch64. `pnpm check` ejecuta Oxfmt, Oxlint, TypeScript, Vite y
+`pnpm install` configura Husky sin descargar binarios externos. En Linux
+x86_64/aarch64, ejecuta `pnpm hooks:setup` antes del primer commit para instalar
+Gitleaks 8.30.1 con descarga verificada por SHA-256. En otras plataformas puedes
+instalar y compilar las dependencias normalmente; para usar el hook de secretos,
+proporciona Gitleaks en `.local/bin/gitleaks`. El hook falla si falta el escáner.
+`pnpm check` ejecuta Oxfmt, Oxlint, TypeScript, Vite y
 la comprobación sintáctica del bundle distribuido. El bundle publicado y `dist/`
 quedan fuera del formateador y del linter de fuentes.
 
 - Pre-commit: Gitleaks sobre cambios preparados y `lint-staged --hide-unstaged`
   con Oxfmt/Oxlint, preservando los cambios sin preparar.
 - Pre-push: `pnpm check`.
-- CI: instalación con lockfile congelado, Gitleaks sobre el historial completo,
+- CI: instalación con lockfile congelado, Gitleaks sobre la ascendencia completa
+  de `HEAD` (incluidos los cambios de merges),
   `pnpm check` y validación HACS. No ejecuta tests.
 - Las validaciones se ejecutan en PR, `main`, tags y manualmente. La validación
   HACS no solicita inclusión en el catálogo. Las releases conservan su flujo

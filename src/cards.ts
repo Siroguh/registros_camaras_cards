@@ -333,7 +333,7 @@ abstract class BaseCard extends HTMLElement {
     actions.replaceChildren(submit);
   }
   private popup() {
-    // oxlint-disable-next-line typescript/no-this-alias -- Traverse this card's DOM and shadow ancestors.
+    // oxlint-disable-next-line typescript/no-this-alias -- Traverse this card's DOM ancestors.
     let node: HTMLElement | null = this;
     while (node) {
       if (node.classList.contains("bubble-pop-up")) return node;

@@ -2,7 +2,7 @@ name: Validate
 on:
   push:
     branches: [main]
-    tags: ["*"]
+    tags: ["**"]
   pull_request:
   workflow_dispatch:
 permissions:
@@ -27,7 +27,8 @@ jobs:
           node-version: "24"
           cache: pnpm
       - run: pnpm install --frozen-lockfile
-      - run: pnpm secrets
+      - run: sh scripts/setup-gitleaks.sh
+      - run: pnpm secrets --log-opts='--full-history --diff-merges=first-parent --diff-filter=tuxdb HEAD'
       - run: pnpm check
   hacs:
     runs-on: ubuntu-latest

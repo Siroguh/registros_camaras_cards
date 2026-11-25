@@ -4,7 +4,8 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "prepare": "sh scripts/setup-gitleaks.sh && husky",
+    "prepare": "husky",
+    "hooks:setup": "sh scripts/setup-gitleaks.sh && husky",
     "build": "vite build",
     "typecheck": "tsc --noEmit -p tsconfig.json",
     "format": "oxfmt --write .",
