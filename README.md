@@ -112,7 +112,10 @@ Se desarrollan directamente en `src/`; no se exportan desde el repositorio padre
 El servidor y sus reglas pertenecen a [registros_camaras](https://github.com/Siroguh/registros_camaras),
 y la integración Python a [registros_camaras_home_assistant](https://github.com/Siroguh/registros_camaras_home_assistant).
 
-Desde este repositorio: `pnpm install --frozen-lockfile`, `pnpm typecheck`, `pnpm build`.
+Desde este repositorio: `pnpm install --frozen-lockfile` y `pnpm check`.
+También están disponibles `pnpm format`, `pnpm lint:fix`, `pnpm typecheck` y `pnpm build`.
+La instalación activa los hooks locales de secretos, formato, lint y comprobación
+antes de push. Consulta [CI, hooks y Pullfrog](.github/README.md) para el flujo de PRs.
 El bundle de `dist/` se publica como `registros-camaras-cards.js` en la raíz y en la release.
 
 Copyright (C) 2026 Siroguh. **GPL-3.0-only**, consulta [LICENSE](LICENSE).

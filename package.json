@@ -3,15 +3,37 @@
   "version": "0.3.3",
   "private": true,
   "type": "module",
-  "packageManager": "pnpm@12.16.1",
   "scripts": {
+    "prepare": "sh scripts/setup-gitleaks.sh && husky",
     "build": "vite build",
-    "typecheck": "tsc --noEmit -p tsconfig.json"
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "format": "oxfmt --write .",
+    "format:check": "oxfmt --check .",
+    "lint": "oxlint --deny-warnings src vite.config.ts",
+    "lint:fix": "pnpm lint --fix",
+    "check": "pnpm format:check && pnpm lint && pnpm typecheck && pnpm build && node --check registros-camaras-cards.js",
+    "secrets": ".local/bin/gitleaks git --redact --no-banner --report-format template --report-template scripts/gitleaks-report.tmpl --report-path -",
+    "secrets:staged": "pnpm secrets --staged"
   },
   "devDependencies": {
     "@tailwindcss/vite": "4.3.5",
+    "husky": "9.1.7",
+    "lint-staged": "17.6.2",
+    "oxfmt": "0.79.0",
+    "oxlint": "1.94.0",
     "tailwindcss": "4.3.5",
     "typescript": "7.0.2",
     "vite": "8.3.8"
-  }
+  },
+  "lint-staged": {
+    "*": [
+      "oxfmt --no-error-on-unmatched-pattern",
+      "oxlint --deny-warnings --no-error-on-unmatched-pattern"
+    ]
+  },
+  "engines": {
+    "node": "^24.11.0 || >=26.0.0",
+    "pnpm": ">=12 <13"
+  },
+  "packageManager": "pnpm@12.16.1"
 }
