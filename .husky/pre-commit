@@ -1,0 +1,2 @@
+pnpm secrets:staged
+pnpm exec lint-staged --hide-unstaged

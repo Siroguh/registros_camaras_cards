@@ -1,21 +1,38 @@
 name: Validate
 on:
   push:
+    branches: [main]
+    tags: ["**"]
   pull_request:
   workflow_dispatch:
 permissions:
   contents: read
+concurrency:
+  group: validate-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
 jobs:
-  syntax:
+  check:
     runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      HUSKY: "0"
     steps:
       - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: pnpm/action-setup@v6.1.1
       - uses: actions/setup-node@v6
         with:
           node-version: "24"
-      - run: node --check registros-camaras-cards.js
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: sh scripts/setup-gitleaks.sh
+      - run: pnpm secrets --log-opts='--full-history --diff-merges=first-parent --diff-filter=tuxdb HEAD'
+      - run: pnpm check
   hacs:
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v7
       - uses: hacs/action@main
