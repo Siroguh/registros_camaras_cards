@@ -756,11 +756,16 @@ class CameraCard extends BaseCard {
     const submit = button("Guardar", () => {});
     submit.type = "submit";
     this.dockSubmit(form, submit);
+    const intervalInstants = () => ({
+      desde: Date.parse(existing ? existing.vigenteDesde : start.input.value),
+      hasta: Date.parse(
+        existing && end.input.value === endValue ? existing.vigenteHasta : end.input.value,
+      ),
+    });
     const validate = () => {
+      const interval = intervalInstants();
       end.input.setCustomValidity(
-        end.input.value && start.input.value && end.input.value <= start.input.value
-          ? "El fin debe ser posterior al inicio."
-          : "",
+        interval.hasta <= interval.desde ? "El fin debe ser posterior al inicio." : "",
       );
       for (const prefix of ["temperatura", "humedad"]) {
         const min = values.get(`${prefix}Min`)!;
@@ -775,15 +780,13 @@ class CameraCard extends BaseCard {
     form.addEventListener("input", validate);
     form.onsubmit = (event) => {
       event.preventDefault();
+      const interval = intervalInstants();
       const payload = {
         id,
         revision: existing?.revision ?? 0,
         zonaHoraria: existing?.zonaHoraria ?? zone(),
-        vigenteDesde: existing ? existing.vigenteDesde : new Date(start.input.value).toISOString(),
-        vigenteHasta:
-          existing && end.input.value === endValue
-            ? existing.vigenteHasta
-            : new Date(end.input.value).toISOString(),
+        vigenteDesde: new Date(interval.desde).toISOString(),
+        vigenteHasta: new Date(interval.hasta).toISOString(),
         motivo: reason.input.value,
         ...Object.fromEntries([...values].map(([key, input]) => [key, Number(input.value)])),
       };
