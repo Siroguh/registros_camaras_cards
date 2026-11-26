@@ -731,6 +731,7 @@ class CameraCard extends BaseCard {
     const startValue = existing ? localTime(existing.vigenteDesde) : localNow();
     const endValue = existing ? localTime(existing.vigenteHasta) : "";
     const start = field("Desde", "datetime-local", startValue);
+    start.input.readOnly = Boolean(existing);
     const end = field("Hasta", "datetime-local", endValue);
     form.append(start.wrapper, end.wrapper);
     const values = new Map<string, HTMLInputElement>();
@@ -778,10 +779,7 @@ class CameraCard extends BaseCard {
         id,
         revision: existing?.revision ?? 0,
         zonaHoraria: existing?.zonaHoraria ?? zone(),
-        vigenteDesde:
-          existing && start.input.value === startValue
-            ? existing.vigenteDesde
-            : new Date(start.input.value).toISOString(),
+        vigenteDesde: existing ? existing.vigenteDesde : new Date(start.input.value).toISOString(),
         vigenteHasta:
           existing && end.input.value === endValue
             ? existing.vigenteHasta
