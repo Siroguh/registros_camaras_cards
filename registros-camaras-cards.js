@@ -338,20 +338,26 @@ var p = class extends HTMLElement {
 		let h = s("Motivo", "text", i?.motivo ?? "", !1);
 		h.input.maxLength = 2e3, c.append(h.wrapper);
 		let g = o("Guardar", () => {});
-		g.type = "submit", this.dockSubmit(c, g), c.addEventListener("input", () => {
-			p.input.setCustomValidity(p.input.value && f.input.value && p.input.value <= f.input.value ? "El fin debe ser posterior al inicio." : "");
+		g.type = "submit", this.dockSubmit(c, g);
+		let _ = () => ({
+			desde: Date.parse(i ? i.vigenteDesde : f.input.value),
+			hasta: Date.parse(i && p.input.value === d ? i.vigenteHasta : p.input.value)
+		});
+		c.addEventListener("input", () => {
+			let e = _();
+			p.input.setCustomValidity(e.hasta <= e.desde ? "El fin debe ser posterior al inicio." : "");
 			for (let e of ["temperatura", "humedad"]) {
 				let t = m.get(`${e}Min`), n = m.get(`${e}Max`);
 				n.setCustomValidity(t.value !== "" && n.value !== "" && Number(n.value) < Number(t.value) ? "El máximo debe ser igual o mayor que el mínimo." : "");
 			}
 		}), c.onsubmit = (n) => {
 			n.preventDefault();
-			let r = {
+			let r = _(), o = {
 				id: l,
 				revision: i?.revision ?? 0,
 				zonaHoraria: i?.zonaHoraria ?? t(),
-				vigenteDesde: i ? i.vigenteDesde : new Date(f.input.value).toISOString(),
-				vigenteHasta: i && p.input.value === d ? i.vigenteHasta : new Date(p.input.value).toISOString(),
+				vigenteDesde: new Date(r.desde).toISOString(),
+				vigenteHasta: new Date(r.hasta).toISOString(),
 				motivo: h.input.value,
 				...Object.fromEntries([...m].map(([e, t]) => [e, Number(t.value)]))
 			};
@@ -359,7 +365,7 @@ var p = class extends HTMLElement {
 				await this.request(i ? "update_manual" : "set_manual", {
 					location_id: e.ubicacionId,
 					manual_id: l,
-					payload: r
+					payload: o
 				}), a.close(), this.snapshot = await this.request("snapshot"), this.render();
 			});
 		}, a.showModal();
