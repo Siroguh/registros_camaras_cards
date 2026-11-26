@@ -321,7 +321,9 @@ var p = class extends HTMLElement {
 		}, n.showModal();
 	}
 	manual(e, i) {
-		let { dialog: a, form: c } = this.dialog("Consigna manual"), l = i?.id ?? crypto.randomUUID(), u = i ? r(i.vigenteDesde) : n(), d = i ? r(i.vigenteHasta) : "", f = s("Desde", "datetime-local", u), p = s("Hasta", "datetime-local", d);
+		let { dialog: a, form: c } = this.dialog("Consigna manual"), l = i?.id ?? crypto.randomUUID(), u = i ? r(i.vigenteDesde) : n(), d = i ? r(i.vigenteHasta) : "", f = s("Desde", "datetime-local", u);
+		f.input.readOnly = !!i;
+		let p = s("Hasta", "datetime-local", d);
 		c.append(f.wrapper, p.wrapper);
 		let m = /* @__PURE__ */ new Map();
 		for (let [t, n] of [
@@ -348,7 +350,7 @@ var p = class extends HTMLElement {
 				id: l,
 				revision: i?.revision ?? 0,
 				zonaHoraria: i?.zonaHoraria ?? t(),
-				vigenteDesde: i && f.input.value === u ? i.vigenteDesde : new Date(f.input.value).toISOString(),
+				vigenteDesde: i ? i.vigenteDesde : new Date(f.input.value).toISOString(),
 				vigenteHasta: i && p.input.value === d ? i.vigenteHasta : new Date(p.input.value).toISOString(),
 				motivo: h.input.value,
 				...Object.fromEntries([...m].map(([e, t]) => [e, Number(t.value)]))
