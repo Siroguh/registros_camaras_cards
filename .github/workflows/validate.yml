@@ -30,6 +30,7 @@ jobs:
       - run: sh scripts/setup-gitleaks.sh
       - run: pnpm secrets --log-opts='--full-history --diff-merges=first-parent --diff-filter=tuxdb HEAD'
       - run: pnpm check
+      - run: git diff --exit-code -- registros-camaras-cards.js
   hacs:
     runs-on: ubuntu-latest
     timeout-minutes: 15

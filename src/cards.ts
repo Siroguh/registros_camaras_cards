@@ -1,5 +1,6 @@
 import styles from "./style.css?inline";
 import { request, entries } from "./client";
+import { ReviewedCommand } from "./command";
 
 type Config = {
   type: string;
@@ -814,7 +815,6 @@ class CameraCard extends BaseCard {
 }
 
 class LotCard extends BaseCard {
-  private requestId = crypto.randomUUID();
   static getStubConfig() {
     return { type: "custom:registros-lot-card" };
   }
@@ -825,7 +825,7 @@ class LotCard extends BaseCard {
     this.body.replaceChildren();
     this.actions.replaceChildren();
     const form = el("form", "", "grid gap-4");
-    const revision = this.snapshot!.revision;
+    const command = new ReviewedCommand<Record<string, unknown>>(this.snapshot!.revision);
     const code = field("Código del lote");
     code.input.maxLength = 200;
     const quantity = field("Cantidad (ud)", "number");
@@ -834,23 +834,36 @@ class LotCard extends BaseCard {
     quantity.input.max = String(Number.MAX_SAFE_INTEGER);
     const start = field("Fecha de inicio", "date", localNow().slice(0, 10));
     const submit = button("Crear", () => {});
+    const review = button("Actualizar revisión", () =>
+      this.run(async () => {
+        if (command.uncertain)
+          throw new Error("Resultado incierto: reintenta Crear para recuperar el recibo original.");
+        this.snapshot = await this.request<Snapshot>("snapshot");
+        command.review(this.snapshot.revision);
+        for (const input of [code.input, quantity.input, start.input]) input.readOnly = false;
+      }),
+    );
     submit.type = "submit";
     form.append(code.wrapper, quantity.wrapper, start.wrapper);
     form.onsubmit = (event) => {
       event.preventDefault();
       const payload = {
-        id: this.requestId,
         codigo: code.input.value,
         cantidad: Number(quantity.input.value),
         iniciadoEn: start.input.value,
         zonaHoraria: zone(),
       };
       void this.run(async () => {
-        const result = await this.request<{ lote: Lot }>("create_lot", {
-          payload,
-          expected_revision: revision,
-        });
-        this.requestId = crypto.randomUUID();
+        let result: { lote: Lot };
+        try {
+          result = await command.send(payload, (data) =>
+            this.request<{ lote: Lot }>("create_lot", data),
+          );
+        } catch (error) {
+          for (const input of [code.input, quantity.input, start.input])
+            input.readOnly = command.uncertain;
+          throw error;
+        }
         this.actions.replaceChildren();
         this.body.replaceChildren(
           el("p", `${result.lote.codigo} · Creado`, "font-semibold"),
@@ -865,6 +878,7 @@ class LotCard extends BaseCard {
     };
     this.body.append(form);
     this.dockSubmit(form, submit);
+    this.actions.append(review);
   }
 }
 
