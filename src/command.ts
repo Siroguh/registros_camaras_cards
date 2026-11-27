@@ -1,8 +1,9 @@
-export const isRevisionConflict = (error: unknown) =>
+const isConfirmedRejection = (error: unknown) =>
   typeof error === "object" &&
   error !== null &&
   "message" in error &&
-  error.message === "Revision changed; refresh and review";
+  (error.message === "Revision changed; refresh and review" ||
+    error.message === "Operation rejected");
 
 /** Freeze uncertain writes; only a confirmed rejection allows a newly reviewed revision. */
 export class ReviewedCommand<T extends Record<string, unknown>> {
@@ -30,11 +31,12 @@ export class ReviewedCommand<T extends Record<string, unknown>> {
       expected_revision: this.revision,
       command_id: crypto.randomUUID(),
     };
+    const wasUncertain = this.uncertain;
     this.outcome = "uncertain";
     try {
       return await send(structuredClone(this.submitted));
     } catch (error) {
-      if (isRevisionConflict(error)) this.outcome = "rejected";
+      if (!wasUncertain && isConfirmedRejection(error)) this.outcome = "rejected";
       throw error;
     }
   }

@@ -202,7 +202,7 @@ async function c(e, n, r) {
 	throw Error("Operación no admitida por la integración nueva.");
 }
 // src/command.ts
-var l = (e) => typeof e == "object" && !!e && "message" in e && e.message === "Revision changed; refresh and review", u = class {
+var l = (e) => typeof e == "object" && !!e && "message" in e && (e.message === "Revision changed; refresh and review" || e.message === "Operation rejected"), u = class {
 	submitted;
 	outcome = "new";
 	revision;
@@ -222,11 +222,13 @@ var l = (e) => typeof e == "object" && !!e && "message" in e && e.message === "R
 			payload: structuredClone(e),
 			expected_revision: this.revision,
 			command_id: crypto.randomUUID()
-		}, this.outcome = "uncertain";
+		};
+		let n = this.uncertain;
+		this.outcome = "uncertain";
 		try {
 			return await t(structuredClone(this.submitted));
 		} catch (e) {
-			throw l(e) && (this.outcome = "rejected"), e;
+			throw !n && l(e) && (this.outcome = "rejected"), e;
 		}
 	}
 }, d = "w-full min-w-0 border border-solid border-ha-control-border bg-ha-input px-3 py-2 text-ha-text focus:outline-2 focus:outline-ha-text disabled:opacity-50", f = "border border-solid border-ha-control-border bg-ha-button px-3 py-2 text-ha-text hover:bg-ha-hover focus:outline-2 focus:outline-ha-text disabled:opacity-50 disabled:cursor-not-allowed", p = () => Intl.DateTimeFormat().resolvedOptions().timeZone, m = () => {

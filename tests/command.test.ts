@@ -35,3 +35,28 @@ test("confirmed conflict needs explicit review and creates a new command", async
     assert.equal(command.payload.code, "Original");
   });
 });
+
+test("confirmed business rejection allows review, but cannot erase an earlier uncertain outcome", async () => {
+  const state = new ReviewedCommand<{ code: string }>(12);
+  await assert.rejects(
+    state.send({ code: "Rejected" }, async () => {
+      throw { message: "Operation rejected" };
+    }),
+  );
+  assert.equal(state.uncertain, false);
+  state.review(13);
+  let submitted: unknown;
+  await assert.rejects(
+    state.send({ code: "Corrected" }, async (command) => {
+      submitted = command;
+      throw new Error("Connection failed");
+    }),
+  );
+  await assert.rejects(
+    state.send({ code: "Changed" }, async (command) => {
+      assert.deepEqual(command, submitted);
+      throw { message: "Operation rejected" };
+    }),
+  );
+  assert.throws(() => state.review(14), /incierto/);
+});
