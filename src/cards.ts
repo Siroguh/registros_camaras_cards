@@ -1,4 +1,6 @@
 import styles from "./style.css?inline";
+import { request, entries } from "./client";
+import { ReviewedCommand } from "./command";
 
 type Config = {
   type: string;
@@ -9,21 +11,23 @@ type Config = {
   humidity_entity?: string;
 };
 type State = { state: string; attributes: Record<string, unknown> };
-type Hass = {
+export type Hass = {
   callWS<T>(message: Record<string, unknown>): Promise<T>;
   states: Record<string, State>;
   user?: { is_admin: boolean };
   themes?: { darkMode: boolean };
   locale?: { language: string };
 };
-type Entry = { id: string; title: string; ready: boolean };
-type Ranges = {
+export type Entry = { id: string; title: string; ready: boolean };
+export type Ranges = {
   temperaturaMin: number;
   temperaturaMax: number;
   humedadMin: number;
   humedadMax: number;
 };
-type Camera = {
+export type Camera = {
+  revision: number;
+  manual: Manual | null;
   ubicacionId: string;
   nombre: string;
   estado: string;
@@ -34,8 +38,12 @@ type Camera = {
   lotes: { codigo: string; cantidad: number }[];
   pendiente: { id: string; propuesta: Ranges | null; motivo: string; detectadoEn: string } | null;
 };
-type Snapshot = { camaras: Camera[]; ubicaciones: { id: string; nombre: string }[] };
-type Lot = { id: string; codigo: string; zonaHoraria: string; revision: number };
+export type Snapshot = {
+  revision: number;
+  camaras: Camera[];
+  ubicaciones: { id: string; nombre: string }[];
+};
+export type Lot = { id: string; codigo: string; zonaHoraria: string; revision: number };
 type Portion = {
   id: string;
   ubicacionId: string;
@@ -44,8 +52,8 @@ type Portion = {
   precision: string;
   orden: number;
 };
-type Options = { lote: Lot; fecha: string; porciones: Portion[] };
-type Manual = Ranges & {
+export type Options = { lote: Lot; fecha: string; porciones: Portion[] };
+export type Manual = Ranges & {
   id: string;
   revision: number;
   zonaHoraria: string;
@@ -67,7 +75,7 @@ type Movement = {
   mezclarOrigen?: boolean;
   corregidoEn: string | null;
 };
-type History = { lote: Lot; movimientos: Movement[] };
+export type History = { lote: Lot; movimientos: Movement[] };
 
 const inputClass =
   "w-full min-w-0 border border-solid border-ha-control-border bg-ha-input px-3 py-2 text-ha-text focus:outline-2 focus:outline-ha-text disabled:opacity-50";
@@ -418,12 +426,7 @@ abstract class BaseCard extends HTMLElement {
   protected async request<T>(operation: string, data: Record<string, unknown> = {}): Promise<T> {
     if (!this.ha || !this.config.entry_id) throw new Error("Conexión sin configurar.");
     const generation = this.generation;
-    const result = await this.ha.callWS<T>({
-      type: "registros_camaras/operation",
-      entry_id: this.config.entry_id,
-      operation,
-      data,
-    });
+    const result = await request<T>(this.ha, this.config.entry_id, operation, data);
     if (generation !== this.generation)
       throw new Error("La configuración ha cambiado. Actualiza la tarjeta.");
     return result;
@@ -673,6 +676,7 @@ class CameraCard extends BaseCard {
     this.updateMeasurements();
   }
   private confirm(camera: Camera) {
+    const commandId = crypto.randomUUID();
     const pending = camera.pendiente!;
     const { dialog, form } = this.dialog("Cambio de consigna");
     form.append(
@@ -686,6 +690,8 @@ class CameraCard extends BaseCard {
       event.preventDefault();
       void this.run(async () => {
         await this.request("confirm_change", {
+          command_id: commandId,
+          expected_revision: camera.revision,
           location_id: camera.ubicacionId,
           proposal_id: pending.id,
         });
@@ -697,14 +703,12 @@ class CameraCard extends BaseCard {
     dialog.showModal();
   }
   private async currentManual(camera: Camera) {
-    const result = await this.request<{ vigente: Manual | null }>("manuals", {
-      location_id: camera.ubicacionId,
-    });
-    if (!result.vigente || result.vigente.id !== camera.consignaId)
+    if (!camera.manual || camera.manual.id !== camera.consignaId)
       throw new Error("La consigna ha cambiado. Actualiza la tarjeta.");
-    return result.vigente;
+    return camera.manual;
   }
   private finishManual(camera: Camera, manual: Manual) {
+    const commandId = crypto.randomUUID();
     const { dialog, form } = this.dialog("Finalizar manual");
     form.append(el("p", ranges(manual)));
     const submit = button("Confirmar", () => {});
@@ -714,6 +718,8 @@ class CameraCard extends BaseCard {
       event.preventDefault();
       void this.run(async () => {
         await this.request("finish_manual", {
+          command_id: commandId,
+          expected_revision: camera.revision,
           location_id: camera.ubicacionId,
           manual_id: manual.id,
           payload: { revision: manual.revision },
@@ -726,6 +732,7 @@ class CameraCard extends BaseCard {
     dialog.showModal();
   }
   private manual(camera: Camera, existing?: Manual) {
+    const commandId = crypto.randomUUID();
     const { dialog, form } = this.dialog("Consigna manual");
     const id = existing?.id ?? crypto.randomUUID();
     const startValue = existing ? localTime(existing.vigenteDesde) : localNow();
@@ -792,6 +799,8 @@ class CameraCard extends BaseCard {
       };
       void this.run(async () => {
         await this.request(existing ? "update_manual" : "set_manual", {
+          command_id: commandId,
+          expected_revision: camera.revision,
           location_id: camera.ubicacionId,
           manual_id: id,
           payload,
@@ -806,7 +815,6 @@ class CameraCard extends BaseCard {
 }
 
 class LotCard extends BaseCard {
-  private requestId = crypto.randomUUID();
   static getStubConfig() {
     return { type: "custom:registros-lot-card" };
   }
@@ -817,6 +825,7 @@ class LotCard extends BaseCard {
     this.body.replaceChildren();
     this.actions.replaceChildren();
     const form = el("form", "", "grid gap-4");
+    const command = new ReviewedCommand<Record<string, unknown>>(this.snapshot!.revision);
     const code = field("Código del lote");
     code.input.maxLength = 200;
     const quantity = field("Cantidad (ud)", "number");
@@ -825,29 +834,51 @@ class LotCard extends BaseCard {
     quantity.input.max = String(Number.MAX_SAFE_INTEGER);
     const start = field("Fecha de inicio", "date", localNow().slice(0, 10));
     const submit = button("Crear", () => {});
+    const review = button("Actualizar revisión", () =>
+      this.run(async () => {
+        if (command.uncertain)
+          throw new Error("Resultado incierto: reintenta Crear para recuperar el recibo original.");
+        this.snapshot = await this.request<Snapshot>("snapshot");
+        command.review(this.snapshot.revision);
+        for (const input of [code.input, quantity.input, start.input]) input.readOnly = false;
+      }),
+    );
     submit.type = "submit";
     form.append(code.wrapper, quantity.wrapper, start.wrapper);
     form.onsubmit = (event) => {
       event.preventDefault();
       const payload = {
-        id: this.requestId,
         codigo: code.input.value,
         cantidad: Number(quantity.input.value),
-        iniciadoEn: new Date(`${start.input.value}T12:00:00`).toISOString(),
+        iniciadoEn: start.input.value,
         zonaHoraria: zone(),
       };
       void this.run(async () => {
-        const result = await this.request<{ lote: Lot }>("create_lot", { payload });
-        this.requestId = crypto.randomUUID();
+        let result: { lote: Lot };
+        try {
+          result = await command.send(payload, (data) =>
+            this.request<{ lote: Lot }>("create_lot", data),
+          );
+        } catch (error) {
+          for (const input of [code.input, quantity.input, start.input])
+            input.readOnly = command.uncertain;
+          throw error;
+        }
         this.actions.replaceChildren();
         this.body.replaceChildren(
           el("p", `${result.lote.codigo} · Creado`, "font-semibold"),
-          button("Nuevo", () => this.render()),
+          button("Nuevo", () =>
+            this.run(async () => {
+              this.snapshot = await this.request<Snapshot>("snapshot");
+              this.render();
+            }),
+          ),
         );
       });
     };
     this.body.append(form);
     this.dockSubmit(form, submit);
+    this.actions.append(review);
   }
 }
 
@@ -859,6 +890,7 @@ class MovementCard extends BaseCard {
     return "Nuevo movimiento";
   }
   private lots: Lot[] = [];
+  private nextBefore: number | null = null;
   private options?: Options;
   private sequence = 0;
   private searchTimer?: ReturnType<typeof setTimeout>;
@@ -877,9 +909,9 @@ class MovementCard extends BaseCard {
     const more = button("Más", () => this.run(() => loadLots(false)));
     const loadLots = async (reset = true) => {
       const sequence = ++this.sequence;
-      const result = await this.request<{ lotes: Lot[]; total: number }>("lots", {
+      const result = await this.request<{ lotes: Lot[]; nextBefore: number | null }>("lots", {
         search: search.input.value,
-        offset: reset ? 0 : this.lots.length,
+        ...(reset || this.nextBefore === null ? {} : { before: this.nextBefore }),
       });
       if (sequence !== this.sequence) return;
       this.lots = reset ? result.lotes : [...this.lots, ...result.lotes];
@@ -891,7 +923,8 @@ class MovementCard extends BaseCard {
       );
       lot.input.replaceChildren(...Array.from(options.input.children));
       lot.input.value = selected;
-      more.hidden = this.lots.length >= result.total;
+      this.nextBefore = result.nextBefore;
+      more.hidden = result.nextBefore === null;
     };
     const loadSelected = async (preserve = false) => {
       const scroll = this.body.scrollTop;
@@ -1008,7 +1041,8 @@ class MovementCard extends BaseCard {
         movement_id: movementId,
       });
       // Never combine a fresh stock revision with an older edit draft.
-      if (options.lote.revision !== history.lote.revision)
+      const fresh = await this.request<History>("movements", { lot_id: lotId });
+      if (JSON.stringify(fresh.movimientos) !== JSON.stringify(history.movimientos))
         throw new Error("El lote ha cambiado. Cierra y vuelve a corregir.");
       this.renderMovement(fields, options, movement, async () => {
         dialog.close();
@@ -1074,6 +1108,8 @@ class MovementCard extends BaseCard {
         sources: Map<string, HTMLInputElement>;
       }[] = [];
       const id = editing?.id ?? crypto.randomUUID();
+      const commandId = crypto.randomUUID();
+      const reason = field("Motivo de la corrección", "text", "", Boolean(editing));
       const updateSummary = () => {
         const total = destinations.reduce((sum, d) => sum + Number(d.amount.value), 0);
         summary.textContent = `Salida: ${total} ud · Restante: ${available - total} ud`;
@@ -1157,6 +1193,7 @@ class MovementCard extends BaseCard {
       const submit = button(editing ? "Guardar" : "Registrar", () => {});
       submit.type = "submit";
       form.append(mode.wrapper, mixing.wrapper, rows, addButton, summary);
+      if (editing) form.append(reason.wrapper);
       content.append(form);
       this.dockSubmit(form, submit);
       if (seed) {
@@ -1185,6 +1222,8 @@ class MovementCard extends BaseCard {
         };
         void this.run(async () => {
           await this.request(editing ? "update_movement" : "register_movement", {
+            command_id: commandId,
+            reason: reason.input.value,
             lot_id: options.lote.id,
             movement_id: editing?.id,
             payload,
@@ -1230,14 +1269,8 @@ class CardEditor extends HTMLElement {
     this.loading = true;
     const entryId = this.config.entry_id;
     try {
-      this.entries = await this.ha.callWS<Entry[]>({ type: "registros_camaras/entries" });
-      const snapshot = entryId
-        ? await this.ha.callWS<Snapshot>({
-            type: "registros_camaras/operation",
-            entry_id: entryId,
-            operation: "snapshot",
-          })
-        : undefined;
+      this.entries = await entries(this.ha);
+      const snapshot = entryId ? await request<Snapshot>(this.ha, entryId, "snapshot") : undefined;
       if (entryId !== this.config.entry_id) return;
       this.snapshot = snapshot;
       this.loaded = true;
