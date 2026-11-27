@@ -1,122 +1,88 @@
 # Registros Cámaras — Tarjetas
 
-Estas tarjetas pertenecen al proyecto **[Siroguh/registros_camaras](https://github.com/Siroguh/registros_camaras)**,
-su repositorio padre y servidor API. El código fuente, las incidencias y las releases
-de las tarjetas se mantienen exclusivamente en este repositorio independiente:
-**[Siroguh/registros_camaras_cards](https://github.com/Siroguh/registros_camaras_cards)**.
+Tarjetas de Home Assistant para **Registros Cámaras 2**, mantenidas en
+[Siroguh/registros_camaras_cards](https://github.com/Siroguh/registros_camaras_cards).
+La versión **1.0** sustituye al cliente de la antigua aplicación `registros_camaras`.
+Requiere la [integración Registros Cámaras](https://github.com/Siroguh/registros_camaras_home_assistant)
+**1.0 o posterior** y Home Assistant **2026.10.3+**.
 
-Tres tarjetas independientes para Home Assistant: **Cámara**, **Nuevo lote** y
-**Nuevo movimiento**. Un único complemento frontend, instalado y actualizado con HACS.
-Requiere la integración [Registros Cámaras](https://github.com/Siroguh/registros_camaras_home_assistant)
-**0.3.1 o posterior**, una conexión configurada y un usuario administrador de HA.
+## Instalar
 
-## Instalación desde la interfaz
+Añade este repositorio personalizado en HACS como **Dashboard**, instala y recarga
+el navegador. En HA 2026.11+ se puede utilizar la Marketplace integrada. No se ha
+solicitado la inclusión en el catálogo público. Un solo recurso ES module:
 
-1. Abre **HACS → Repositorios personalizados**.
-2. Añade `https://github.com/Siroguh/registros_camaras_cards`, tipo **Dashboard**.
-3. Busca **Registros Cámaras — Tarjetas** y pulsa **Descargar**.
-4. Recarga la página de Home Assistant.
-5. Abre **Editar dashboard → Añadir tarjeta** y busca **Registros Cámaras**.
-6. Elige Cámara, Nuevo lote o Nuevo movimiento y selecciona la conexión en su editor visual.
-
-HACS descarga el recurso JavaScript y lo registra en dashboards gestionados desde
-la interfaz (modo storage). No hay que copiar archivos, editar el filesystem ni
-escribir YAML. En instalaciones que gestionan los recursos mediante YAML, cambia
-la gestión a la interfaz si quieres este flujo sin archivos manuales.
-
-Este repositorio es **exclusivamente personalizado**. No se solicita ni se pretende
-su inclusión en el catálogo de HACS. La CI HACS solo valida el formato técnico.
-
-## Tarjetas
-
-### Apariencia clara y oscura
-
-Las tres tarjetas siguen automáticamente el tema de Home Assistant, incluido el modo
-claro u oscuro elegido en tu perfil. Fondos, textos, campos, botones, diálogos y editores
-visuales usan los colores del tema activo. Los controles nativos de fecha y selección
-también siguen el modo de HA. No necesitas configurar cada tarjeta ni escribir YAML.
-Cambiar de tema conserva los valores que estés introduciendo en los formularios.
-
-### Scroll y formularios largos
-
-Las tarjetas crecen hasta la altura disponible y desplazan únicamente su cuerpo.
-La cabecera, las lecturas de cámara y las acciones permanecen visibles. Los diálogos
-usan la misma estructura, con Cancelar y Guardar/Confirmar al pie. El historial y
-los destinos comparten el scroll del cuerpo; cargar más conserva la posición.
-La altura sigue el viewport visual, incluido el teclado móvil y las zonas seguras.
-Los gestos táctiles del cuerpo quedan aislados del gesto de cierre de Bubble;
-el navegador conserva el desplazamiento nativo y la cabecera mantiene su cierre.
-El límite de altura se calcula a partir del marco del pop-up, permitiendo anclar
-las hojas móviles al borde inferior sin reducir su espacio de scroll al crecer.
-
-En pop-ups Bubble, el contenedor exterior debe ceder el scroll a la tarjeta
-(`overflow: hidden`, altura limitada al viewport y contenido flex con `min-height: 0`).
-La cabecera Bubble debe usar el título de la tarjeta: la tarjeta omite su título
-interior en ese contexto. En dashboards normales conserva su propia cabecera.
-
-### Cámara
-
-Selecciona una cámara y, opcionalmente, sus entidades de temperatura/humedad existentes.
-Presenta mediciones, rangos de consigna vigente, origen, fin de excepción manual,
-lotes presentes y propuesta pendiente. No duplica sensores ambientales.
-
-- **Revisar:** diálogo con consigna actual y propuesta.
-  Confirma el identificador mostrado; una propuesta obsoleta se rechaza.
-- **Consigna manual:** diálogo con rangos, inicio, fin obligatorio y motivo.
-- **Editar manual:** modifica valores o intervalo de la consigna vigente, con control de revisión.
-- **Finalizar manual:** confirmación breve; cierra el intervalo con la hora del servidor y
-  recupera la última automática confirmada, sin aceptar una propuesta pendiente.
-- **Actualizar:** vuelve a consultar la API.
-
-Las consignas son referencias de la aplicación, no órdenes directas a actuadores.
-Temperatura y humedad se muestran como rangos, sin inventar una media o un setpoint.
-
-### Nuevo lote
-
-Código, cantidad y fecha inicial. La API aplica la regla existente de entrada en la
-cámara 102 al día siguiente. Las fechas se interpretan en la zona horaria indicada
-en el formulario. El alta usa un UUID estable para evitar duplicados al reintentar.
-
-### Nuevo movimiento
-
-Filtra lotes, selecciona uno y una fecha. La API devuelve las porciones disponibles
-en esa fecha y la revisión del lote; la tarjeta no reconstruye genealogías.
-Permite mover todo a un destino o repartir cantidades, con selección explícita de
-procedencias por destino. También permite declarar una mezcla física del origen.
-La API valida cantidades, fechas, procedencias y cambios concurrentes.
-**Movimientos** muestra los más recientes del lote y permite cargar más.
-**Corregir** reutiliza el formulario de origen, destinos y procedencias, con la fecha y
-cantidades existentes. La API devuelve las existencias anteriores a esa operación y
-revalida todo el historial al guardar, incluidos los movimientos posteriores.
-La entrada inicial se consulta pero no se corrige desde esta tarjeta.
-
-## Arquitectura
-
-```text
-Tarjetas → WebSocket autenticado de HA → integración Python → API pública → base de datos
+```yaml
+url: /hacsfiles/registros_camaras_cards/registros-camaras-cards.js
+type: module
 ```
 
-Las tarjetas no reciben claves de la API. No hablan directamente con el servidor ni
-con GitHub durante el uso diario. No crean ayudantes de HA para guardar borradores.
-Las reglas de lotes, movimientos y consignas pertenecen al servidor.
+Las tres tarjetas tienen editor visual y aparecen en **Añadir tarjeta**:
 
-Las tres tarjetas comparten un único archivo JS autocontenido, sin dependencias en
-CDN ni bibliotecas de frontend externas en tiempo de ejecución. Usan custom elements
-y controles nativos del navegador, con diálogos modales y editores visuales. Se
-actualizan cada 60 segundos; los formularios conservan su contenido durante el sondeo.
+- `custom:registros-camera-card`: lecturas físicas de HA, consigna efectiva,
+  propuesta exacta, revisión/confirmación, consigna manual con inicio/fin,
+  edición/finalización y listado de lotes.
+- `custom:registros-lot-card`: código, cantidad y día local de inicio.
+- `custom:registros-movement-card`: búsqueda paginada, disponibilidad por fecha,
+  traslado completo/parcial, reparto, mezcla, procedencias e historial con
+  correcciones auditadas y motivo obligatorio.
 
-## Desarrollo y distribución
+Se conservan los estilos adaptados al tema HA, diálogos, alturas de popups,
+scroll de formularios, botones fijos, adaptación al teclado móvil, mensajes
+accesibles y restauración de foco. Las lecturas físicas nunca se sustituyen por
+las consignas. Toda validación de stock y calendario permanece en el servidor.
 
-Este repositorio es la única fuente de las tarjetas y su distribución para HACS.
-Se desarrollan directamente en `src/`; no se exportan desde el repositorio padre.
-El servidor y sus reglas pertenecen a [registros_camaras](https://github.com/Siroguh/registros_camaras),
-y la integración Python a [registros_camaras_home_assistant](https://github.com/Siroguh/registros_camaras_home_assistant).
+## Configuración
 
-Desde este repositorio: `pnpm install --frozen-lockfile` y `pnpm check`.
-También están disponibles `pnpm format`, `pnpm lint:fix`, `pnpm typecheck` y `pnpm build`.
-La instalación configura los hooks locales; ejecuta `pnpm hooks:setup` en Linux
-antes del primer commit para instalar el escáner de secretos.
-Consulta [CI, hooks y Pullfrog](.github/ci.md) para el flujo de PRs y otras plataformas.
-El bundle de `dist/` se publica como `registros-camaras-cards.js` en la raíz y en la release.
+```yaml
+type: custom:registros-camera-card
+entry_id: ID_DE_LA_ENTRADA_NUEVA
+location_id: villarroya-01-01-102
+title: 102 Salado
+temperature_entity: sensor.camara_102_temperature
+humidity_entity: sensor.camara_102_humidity
+```
 
-Copyright (C) 2026 Siroguh. **GPL-3.0-only**, consulta [LICENSE](LICENSE).
+Las tarjetas de lote y movimiento solo requieren `type` y `entry_id`; `title` es
+opcional. Selecciona la conexión y cámara desde el editor visual. No se incluyen
+direcciones de servidor ni claves en YAML: se guardan únicamente en la integración.
+
+## Contrato nuevo y actualización
+
+`src/client.ts` traduce las vistas del diseño a las **acciones nativas** de HA,
+mediante `call_service` con `return_response`. No usa el bridge anterior
+`registros_camaras/operation` ni endpoints de la aplicación antigua.
+
+La revisión del centro y el ID de propuesta son los mostrados al usuario al abrir
+el formulario. No se refresca silenciosamente la revisión al confirmar. Cada
+comando tiene un UUID estable durante los reintentos del formulario; una corrección
+tiene un UUID nuevo distinto del movimiento original. Un conflicto requiere
+actualizar y volver a revisar. Si se pierde la conexión tras enviar, reintenta desde
+el mismo formulario para recuperar el recibo; no abras otra operación equivalente.
+
+El servidor puede devolver `pending` mientras reconcilia o proyecta el estado:
+se muestra un mensaje, nunca una cámara vacía o un historial inventado.
+La integración conserva la última consigna automática hasta confirmación explícita.
+
+Al sustituir la integración instalada:
+
+1. Guarda una copia del dashboard y del componente.
+2. Instala la integración nueva y conéctala al servidor nuevo (también admite `vp run dev`).
+3. Sustituye `entry_id` y referencias a entidades antiguas, incluidas las incrustadas
+   en CSS/JS de Bubble Card. Los límites nuevos incluyen `active_lots` para conservar
+   los indicadores ambientales solo en cámaras ocupadas.
+4. Mantén hashes de navegación, popup, sensores físicos y CSS de disposición.
+5. Deja un único recurso de estas tarjetas, actualizado a la nueva versión, y retira
+   la entrada/entidades/componentes antiguos. Recarga el navegador.
+
+## Desarrollo y releases
+
+```sh
+pnpm install --frozen-lockfile
+pnpm check
+```
+
+El build produce `dist/registros-camaras-cards.js` y copia el recurso a la raíz para
+instalación HACS. No añadas credenciales al bundle. Los tests del adaptador verifican
+revisión exacta, reintentos, estado pendiente y procedencias de corrección.
+Las etiquetas `v*` disparan validación y release automática del recurso compilado.
