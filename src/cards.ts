@@ -635,6 +635,17 @@ class CameraCard extends BaseCard {
     this.body.append(
       el("p", camera.consigna ? `Consigna: ${ranges(camera.consigna)}` : "Sin consigna"),
     );
+    const reasons: Record<string, string> = {
+      conflict: "Conflicto de planes: los lotes tienen rangos incompatibles.",
+      no_plan: "Hay lotes sin un plan asignado.",
+      no_phase: "El plan no tiene una fase aplicable a esta cámara y fecha.",
+    };
+    const reason = reasons[camera.estado];
+    if (reason) {
+      const message = el("p", reason, "text-sm text-ha-secondary");
+      message.setAttribute("role", camera.estado === "conflict" ? "alert" : "status");
+      this.body.append(message);
+    }
     if (camera.origen === "automatica_confirmada")
       this.body.append(el("p", "Automática", "text-sm text-ha-secondary"));
     if (camera.manualHasta)
