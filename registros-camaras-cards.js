@@ -501,7 +501,17 @@ var T = class extends HTMLElement {
 			let r = _("div"), i = _("p", "", "text-lg");
 			i.dataset.measurement = e, r.append(_("p", n, "text-sm text-ha-secondary"), i), t.append(r);
 		}
-		if (this.readings.append(t), this.readings.hidden = !1, this.body.append(_("p", e.consigna ? `Consigna: ${g(e.consigna)}` : "Sin consigna")), e.origen === "automatica_confirmada" && this.body.append(_("p", "Automática", "text-sm text-ha-secondary")), e.manualHasta && this.body.append(_("p", `Manual hasta ${new Date(e.manualHasta).toLocaleString(this.ha?.locale?.language, {
+		this.readings.append(t), this.readings.hidden = !1, this.body.append(_("p", e.consigna ? `Consigna: ${g(e.consigna)}` : "Sin consigna"));
+		let n = {
+			conflict: "Conflicto de planes: los lotes tienen rangos incompatibles.",
+			no_plan: "Hay lotes sin un plan asignado.",
+			no_phase: "El plan no tiene una fase aplicable a esta cámara y fecha."
+		}[e.estado];
+		if (n) {
+			let t = _("p", n, "text-sm text-ha-secondary");
+			t.setAttribute("role", e.estado === "conflict" ? "alert" : "status"), this.body.append(t);
+		}
+		if (e.origen === "automatica_confirmada" && this.body.append(_("p", "Automática", "text-sm text-ha-secondary")), e.manualHasta && this.body.append(_("p", `Manual hasta ${new Date(e.manualHasta).toLocaleString(this.ha?.locale?.language, {
 			dateStyle: "short",
 			timeStyle: "short"
 		})}`)), e.pendiente && (this.body.append(_("p", `Pendiente: ${g(e.pendiente.propuesta)}`, "border-t border-solid border-ha-border pt-3")), this.actions.append(v("Revisar", () => this.confirm(e)))), e.manualHasta) {
@@ -509,11 +519,11 @@ var T = class extends HTMLElement {
 			t.append(v("Editar manual", () => this.run(async () => this.manual(e, await this.currentManual(e)))), v("Finalizar manual", () => this.run(async () => this.finishManual(e, await this.currentManual(e))))), this.actions.append(t);
 		} else this.actions.append(v("Consigna manual", () => this.manual(e)));
 		this.actions.append(v("Actualizar", () => this.refresh()));
-		let n = _("details");
-		n.append(_("summary", `Lotes (${e.lotes.length})`, "cursor-pointer"));
-		let r = _("ul", "", "mt-2 grid gap-2");
-		for (let t of e.lotes) r.append(_("li", `${t.codigo} · ${t.cantidad} ud`));
-		n.append(r), this.body.append(n), this.updateMeasurements();
+		let r = _("details");
+		r.append(_("summary", `Lotes (${e.lotes.length})`, "cursor-pointer"));
+		let i = _("ul", "", "mt-2 grid gap-2");
+		for (let t of e.lotes) i.append(_("li", `${t.codigo} · ${t.cantidad} ud`));
+		r.append(i), this.body.append(r), this.updateMeasurements();
 	}
 	confirm(e) {
 		let t = crypto.randomUUID(), n = e.pendiente, { dialog: r, form: i } = this.dialog("Cambio de consigna");
